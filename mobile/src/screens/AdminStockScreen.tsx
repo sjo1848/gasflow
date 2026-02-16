@@ -94,42 +94,83 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
       {loading ? (
         <LoadingBlock label="Actualizando indicadores..." />
       ) : summary ? (
-        <Card style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.sectionTitle}>Resumen acumulado</Text>
-            <Chip label="En línea" tone="success" />
+        <View style={styles.summaryContainer}>
+          <Text style={styles.sectionHeading}>Estado del Ciclo</Text>
+          <View style={styles.mainStatsRow}>
+            <Card style={[styles.statCard, { flex: 1, borderColor: colors.primary }]}>
+              <Text style={styles.statCardLabel}>Llenas Disponibles</Text>
+              <Text style={[styles.statCardValue, { color: colors.primary }]}>
+                {summary.llenas_disponibles_estimadas}
+              </Text>
+              <Text style={styles.statCardSub}>En depósito (est.)</Text>
+            </Card>
+            <Card style={[styles.statCard, { flex: 1, borderColor: summary.pendientes_recuperar > 0 ? colors.danger : colors.primary }]}>
+              <Text style={styles.statCardLabel}>Vacías Pendientes</Text>
+              <Text style={[styles.statCardValue, { color: summary.pendientes_recuperar > 0 ? colors.danger : colors.textStrong }]}>
+                {summary.pendientes_recuperar}
+              </Text>
+              <Text style={styles.statCardSub}>Por recuperar</Text>
+            </Card>
           </View>
-          <View style={styles.grid}>
-            <View style={styles.statTile}>
-              <Text style={styles.statLabel}>Llenas ingresadas</Text>
-              <Text style={styles.statValue}>{summary.llenas_ingresadas}</Text>
+
+          <Card style={styles.card}>
+            <Text style={styles.sectionTitle}>Histórico Acumulado</Text>
+            <View style={styles.grid}>
+              <View style={styles.statTile}>
+                <Text style={styles.statLabel}>Llenas Ingresadas</Text>
+                <Text style={styles.statValue}>{summary.llenas_ingresadas}</Text>
+              </View>
+              <View style={styles.statTile}>
+                <Text style={styles.statLabel}>Llenas Entregadas</Text>
+                <Text style={styles.statValue}>{summary.llenas_entregadas}</Text>
+              </View>
+              <View style={styles.statTile}>
+                <Text style={styles.statLabel}>Vacías Recibidas</Text>
+                <Text style={styles.statValue}>{summary.vacias_recibidas}</Text>
+              </View>
+              <View style={styles.statTile}>
+                <Text style={styles.statLabel}>Vacías en Depósito</Text>
+                <Text style={styles.statValue}>{summary.vacias_deposito_estimadas}</Text>
+              </View>
             </View>
-            <View style={styles.statTile}>
-              <Text style={styles.statLabel}>Llenas entregadas</Text>
-              <Text style={styles.statValue}>{summary.llenas_entregadas}</Text>
-            </View>
-            <View style={styles.statTile}>
-              <Text style={styles.statLabel}>Vacías recibidas</Text>
-              <Text style={styles.statValue}>{summary.vacias_recibidas}</Text>
-            </View>
-            <View style={styles.statTile}>
-              <Text style={styles.statLabel}>Pendiente</Text>
-              <Text style={styles.statValue}>{summary.pendientes_recuperar}</Text>
-            </View>
-          </View>
-        </Card>
+          </Card>
+        </View>
       ) : null}
 
       {report ? (
-        <Card style={styles.card}>
+        <Card style={[styles.card, styles.reportCard]}>
           <View style={styles.cardHeader}>
-            <Text style={styles.sectionTitle}>Reporte operativo</Text>
-            <Chip label={report.date} tone="info" />
+            <View>
+              <Text style={styles.sectionTitle}>Balance del Día</Text>
+              <Text style={styles.metaLabel}>{report.date}</Text>
+            </View>
+            <Chip label="Hoy" tone="info" />
           </View>
-          <Text style={styles.metaLine}>Entregas del día: {report.entregas_dia}</Text>
-          <Text style={styles.metaLine}>Llenas entregadas: {report.llenas_entregadas}</Text>
-          <Text style={styles.metaLine}>Vacías recuperadas: {report.vacias_recibidas}</Text>
-          <Text style={styles.metaLine}>Pendiente: {report.pendiente}</Text>
+          
+          <View style={styles.reportRow}>
+            <View style={styles.reportItem}>
+              <Text style={styles.reportValue}>{report.entregas_dia}</Text>
+              <Text style={styles.reportLabel}>Entregas</Text>
+            </View>
+            <View style={styles.reportDivider} />
+            <View style={styles.reportItem}>
+              <Text style={styles.reportValue}>{report.llenas_entregadas}</Text>
+              <Text style={styles.reportLabel}>Llenas</Text>
+            </View>
+            <View style={styles.reportDivider} />
+            <View style={styles.reportItem}>
+              <Text style={styles.reportValue}>{report.vacias_recibidas}</Text>
+              <Text style={styles.reportLabel}>Vacías</Text>
+            </View>
+          </View>
+
+          {report.pendiente > 0 && (
+            <View style={styles.warningBox}>
+              <Text style={styles.warningText}>
+                ⚠️ Faltan {report.pendiente} vacías para cerrar el día.
+              </Text>
+            </View>
+          )}
         </Card>
       ) : null}
 
@@ -174,6 +215,87 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.section,
     color: colors.textStrong,
+  },
+  sectionHeading: {
+    ...typography.section,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    fontSize: 12,
+  },
+  summaryContainer: {
+    gap: spacing.sm,
+  },
+  mainStatsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  statCard: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+    borderLeftWidth: 4,
+  },
+  statCardLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  statCardValue: {
+    ...typography.display,
+    fontSize: 36,
+    lineHeight: 42,
+    marginVertical: 4,
+  },
+  statCardSub: {
+    ...typography.caption,
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  reportCard: {
+    backgroundColor: '#F0F7F4',
+    borderColor: '#D1E6DD',
+  },
+  reportRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    marginTop: spacing.sm,
+  },
+  reportItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  reportValue: {
+    ...typography.title,
+    color: colors.textStrong,
+  },
+  reportLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  reportDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: '#D1E6DD',
+  },
+  metaLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  warningBox: {
+    backgroundColor: '#FFF1F0',
+    padding: spacing.sm,
+    borderRadius: 8,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: '#FFD8D6',
+  },
+  warningText: {
+    ...typography.caption,
+    color: colors.danger,
+    textAlign: 'center',
+    fontWeight: '600',
   },
   actionsRow: {
     flexDirection: 'row',

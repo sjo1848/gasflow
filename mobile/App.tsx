@@ -9,17 +9,17 @@ import {
   Text,
   View,
 } from 'react-native';
-import { login, me } from './src/api/client';
 import { AdminOrdersScreen } from './src/screens/AdminOrdersScreen';
 import { AdminStockScreen } from './src/screens/AdminStockScreen';
 import { DriverDeliveryScreen } from './src/screens/DriverDeliveryScreen';
 import { DriverOrdersScreen } from './src/screens/DriverOrdersScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { ModeSelectScreen } from './src/screens/ModeSelectScreen';
-import { clearToken, loadToken, saveToken } from './src/storage/session';
+import { useAuthStore } from './src/store/authStore';
+import { useSyncQueue } from './src/hooks/useSyncQueue';
 import { colors, spacing, typography } from './src/theme/tokens';
-import { Order, Session } from './src/types';
-import { AppMode, isModeAllowed } from './src/utils/mode';
+import { Order } from './src/types';
+import { isModeAllowed } from './src/utils/mode';
 import { AppButton } from './src/ui/primitives';
 
 type Tab = {
@@ -55,60 +55,24 @@ function SegmentedTabs({
 }
 
 export default function App(): React.JSX.Element {
-  const [session, setSession] = useState<Session | null>(null);
-  const [mode, setMode] = useState<AppMode | null>(null);
-  const [loading, setLoading] = useState(true);
+  useSyncQueue();
+  const { status, user, mode, setMode, logout, bootstrap, token } = useAuthStore();
   const [adminTab, setAdminTab] = useState<'orders' | 'stock'>('orders');
   const [driverTab, setDriverTab] = useState<'orders' | 'delivery'>('orders');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   useEffect(() => {
-    const bootstrap = async (): Promise<void> => {
-      try {
-        const token = await loadToken();
-        if (!token) {
-          return;
-        }
-        const profile = await me(token);
-        setSession({
-          token,
-          userId: profile.id,
-          username: profile.username,
-          role: profile.role,
-        });
-      } catch {
-        await clearToken();
-      } finally {
-        setLoading(false);
-      }
-    };
-
     void bootstrap();
-  }, []);
-
-  const handleLogin = async (username: string, password: string): Promise<void> => {
-    const token = await login(username, password);
-    const profile = await me(token);
-    await saveToken(token);
-    setSession({ token, userId: profile.id, username: profile.username, role: profile.role });
-    setMode(null);
-  };
-
-  const handleLogout = async (): Promise<void> => {
-    await clearToken();
-    setSession(null);
-    setMode(null);
-    setSelectedOrder(null);
-  };
+  }, [bootstrap]);
 
   const activeMode = useMemo(() => {
-    if (!session || !mode) return null;
-    if (!isModeAllowed(session.role, mode)) return null;
+    if (!user || !mode) return null;
+    if (!isModeAllowed(user.role, mode)) return null;
     return mode;
-  }, [session, mode]);
+  }, [user, mode]);
   const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
 
-  if (loading) {
+  if (status === 'loading' || status === 'idle') {
     return (
       <SafeAreaView style={styles.loaderWrap}>
         <StatusBar barStyle="dark-content" />
@@ -118,17 +82,20 @@ export default function App(): React.JSX.Element {
     );
   }
 
-  if (!session) {
-    return <LoginScreen onSubmit={handleLogin} />;
+  if (status === 'unauthenticated' || !user || !token) {
+    return <LoginScreen />;
   }
 
   if (!activeMode) {
     return (
       <ModeSelectScreen
-        role={session.role}
-        username={session.username}
+        role={user.role}
+        username={user.username}
         onSelectMode={setMode}
-        onLogout={handleLogout}
+        onLogout={() => {
+          setSelectedOrder(null);
+          void logout();
+        }}
       />
     );
   }
@@ -153,12 +120,15 @@ export default function App(): React.JSX.Element {
         <View>
           <Text style={styles.appName}>GasFlow</Text>
           <Text style={styles.appMeta}>
-            {session.username} • {activeMode}
+            {user.username} • {activeMode}
           </Text>
         </View>
         <View style={styles.topActions}>
           <AppButton title="Cambiar modo" tone="ghost" onPress={() => setMode(null)} />
-          <AppButton title="Salir" tone="danger" onPress={handleLogout} />
+          <AppButton title="Salir" tone="danger" onPress={() => {
+             setSelectedOrder(null);
+             void logout();
+          }} />
         </View>
       </View>
 
@@ -177,13 +147,13 @@ export default function App(): React.JSX.Element {
       <View style={styles.body}>
         {activeMode === 'ADMIN' ? (
           adminTab === 'orders' ? (
-            <AdminOrdersScreen token={session.token} />
+            <AdminOrdersScreen token={token} />
           ) : (
-            <AdminStockScreen token={session.token} />
+            <AdminStockScreen token={token} />
           )
         ) : driverTab === 'orders' ? (
           <DriverOrdersScreen
-            token={session.token}
+            token={token}
             onSelectOrder={(order) => {
               setSelectedOrder(order);
               setDriverTab('delivery');
@@ -192,7 +162,7 @@ export default function App(): React.JSX.Element {
           />
         ) : (
           <DriverDeliveryScreen
-            token={session.token}
+            token={token}
             selectedOrder={selectedOrder}
             onSuccess={async () => setDriverTab('orders')}
           />

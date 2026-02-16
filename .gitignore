@@ -1,14 +1,45 @@
-# Rust
-backend/target/
+# Node modules
+node_modules/
 
-# Node / Expo
-mobile/node_modules/
-mobile/.expo/
+# Expo
+.expo/
+web-build/
 
-# Env files
+# Rust / Cargo
+target/
+**/*.rs.bk
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
 .env
-backend/.env
-mobile/.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# OS / editor
+# OS generated files
 .DS_Store
+Thumbs.db
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local Documentation (User request: Only local doc)
+PENDIENTES_*.md
+HANDOFF_*.md
+proyecto_reparto_garrafas.md
+*.bk
+*.bak
+*.tmp
+temp/
+tmp/

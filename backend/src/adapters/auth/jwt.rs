@@ -7,18 +7,22 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct JwtService {
     secret: String,
+    expiration_hours: i64,
 }
 
 impl JwtService {
-    pub fn new(secret: String) -> Self {
-        Self { secret }
+    pub fn new(secret: String, expiration_hours: i64) -> Self {
+        Self {
+            secret,
+            expiration_hours,
+        }
     }
 
     pub fn issue(&self, user_id: Uuid, role: Role) -> Result<String, DomainError> {
         let claims = Claims {
             sub: user_id.to_string(),
             role,
-            exp: (Utc::now() + Duration::hours(12)).timestamp() as usize,
+            exp: (Utc::now() + Duration::hours(self.expiration_hours)).timestamp() as usize,
         };
 
         encode(

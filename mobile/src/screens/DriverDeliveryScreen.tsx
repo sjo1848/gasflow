@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { registerDelivery, registerFailedDelivery } from '../api/client';
 import { Order } from '../types';
+import { useDeliveryStore } from '../store/deliveryStore';
 import { colors, spacing, typography } from '../theme/tokens';
 import { AppButton, AppInput, Card, Chip, EmptyState, InlineMessage } from '../ui/primitives';
 
@@ -12,6 +13,8 @@ interface Props {
 }
 
 export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props): React.JSX.Element {
+  const addToQueue = useDeliveryStore((state) => state.addToQueue);
+  const queue = useDeliveryStore((state) => state.queue);
   const [llenas, setLlenas] = useState('1');
   const [vacias, setVacias] = useState('0');
   const [notes, setNotes] = useState('');
@@ -22,6 +25,9 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
   const [message, setMessage] = useState<string | null>(null);
   const [submittingDelivered, setSubmittingDelivered] = useState(false);
   const [submittingFailed, setSubmittingFailed] = useState(false);
+
+  const isNetworkError = (msg: string) => 
+    msg.includes('No se pudo conectar') || msg.includes('tardó demasiado');
 
   const handleDelivered = async (): Promise<void> => {
     if (!selectedOrder) return;
@@ -36,20 +42,28 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
       return;
     }
 
+    const payload = {
+      order_id: selectedOrder.id,
+      llenas_entregadas: Number(llenas),
+      vacias_recibidas: Number(vacias),
+      notes: notes.trim() || undefined,
+    };
+
     try {
       setSubmittingDelivered(true);
       setError(null);
       setMessage(null);
-      await registerDelivery(token, {
-        order_id: selectedOrder.id,
-        llenas_entregadas: Number(llenas),
-        vacias_recibidas: Number(vacias),
-        notes: notes.trim() || undefined,
-      });
+      await registerDelivery(token, payload);
       setMessage('Entrega registrada correctamente.');
       await onSuccess();
-    } catch (err) {
-      setError((err as Error).message);
+    } catch (err: any) {
+      if (isNetworkError(err.message)) {
+        addToQueue({ type: 'SUCCESS', token, payload });
+        setMessage('Sin conexión. La entrega se guardó localmente y se sincronizará luego.');
+        await onSuccess();
+      } else {
+        setError(err.message);
+      }
     } finally {
       setSubmittingDelivered(false);
     }
@@ -63,24 +77,34 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
       return;
     }
 
+    const payload = {
+      order_id: selectedOrder.id,
+      reason: reason.trim(),
+      reprogram_date: reprogramDate,
+      reprogram_time_slot: reprogramSlot,
+    };
+
     try {
       setSubmittingFailed(true);
       setError(null);
       setMessage(null);
-      await registerFailedDelivery(token, {
-        order_id: selectedOrder.id,
-        reason: reason.trim(),
-        reprogram_date: reprogramDate,
-        reprogram_time_slot: reprogramSlot,
-      });
-      setMessage('Entrega fallida registrada y pedido reprogramado.');
+      await registerFailedDelivery(token, payload);
+      setMessage('Entrega fallida registrada.');
       await onSuccess();
-    } catch (err) {
-      setError((err as Error).message);
+    } catch (err: any) {
+      if (isNetworkError(err.message)) {
+        addToQueue({ type: 'FAILED', token, payload });
+        setMessage('Sin conexión. El fallo se guardó localmente y se sincronizará luego.');
+        await onSuccess();
+      } else {
+        setError(err.message);
+      }
     } finally {
       setSubmittingFailed(false);
     }
   };
+
+  const pendingCount = queue.filter(q => q.token === token).length;
 
   return (
     <ScrollView
@@ -88,7 +112,12 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>Registrar entrega</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>Registrar entrega</Text>
+        {pendingCount > 0 && (
+          <Chip label={`${pendingCount} pendiente(s)`} tone="warning" />
+        )}
+      </View>
       <Card style={styles.orderCard}>
         <View style={styles.orderHeader}>
           <Text style={styles.orderLabel}>Pedido seleccionado</Text>
@@ -109,9 +138,21 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
         <>
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Entrega exitosa</Text>
-            <AppInput label="Llenas entregadas" value={llenas} onChangeText={setLlenas} keyboardType="number-pad" />
-            <AppInput label="Vacías recibidas" value={vacias} onChangeText={setVacias} keyboardType="number-pad" />
-            <AppInput label="Notas (opcional)" value={notes} onChangeText={setNotes} />
+            <AppInput
+              label="Llenas entregadas"
+              value={llenas}
+              onChangeText={setLlenas}
+              keyboardType="number-pad"
+              testID="input-llenas"
+            />
+            <AppInput
+              label="Vacías recibidas"
+              value={vacias}
+              onChangeText={setVacias}
+              keyboardType="number-pad"
+              testID="input-vacias"
+            />
+            <AppInput label="Notas (opcional)" value={notes} onChangeText={setNotes} testID="input-notes" />
             <AppButton
               title="Marcar como entregado"
               onPress={handleDelivered}
@@ -152,6 +193,11 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.textStrong,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   orderCard: {
     gap: spacing.xs,

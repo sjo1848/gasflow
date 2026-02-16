@@ -9,14 +9,12 @@ import {
   View,
 } from 'react-native';
 import { getApiBaseUrl } from '../api/client';
+import { useAuthStore } from '../store/authStore';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 import { AppButton, AppInput, Card, InlineMessage, ScreenBackdrop } from '../ui/primitives';
 
-interface Props {
-  onSubmit: (username: string, password: string) => Promise<void>;
-}
-
-export function LoginScreen({ onSubmit }: Props): React.JSX.Element {
+export function LoginScreen(): React.JSX.Element {
+  const login = useAuthStore((state) => state.login);
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('admin123');
   const [loading, setLoading] = useState(false);
@@ -26,7 +24,7 @@ export function LoginScreen({ onSubmit }: Props): React.JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      await onSubmit(username.trim(), password);
+      await login(username.trim(), password);
     } catch (err) {
       setError((err as Error).message);
     } finally {

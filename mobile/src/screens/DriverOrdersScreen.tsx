@@ -65,6 +65,7 @@ export function DriverOrdersScreen({ token, onSelectOrder, selectedOrderId }: Pr
                 <Chip label={order.status} tone={order.status === 'ENTREGADO' ? 'success' : 'warning'} />
               </View>
               <Text style={styles.meta}>{order.scheduled_date} • {order.time_slot}</Text>
+              {order.notes ? <Text style={styles.notes}>Nota: {order.notes}</Text> : null}
               <Text style={styles.meta}>ID: {order.id}</Text>
             </Card>
           </Pressable>
@@ -124,5 +125,12 @@ const styles = StyleSheet.create({
   meta: {
     ...typography.caption,
     color: colors.textMuted,
+  },
+  notes: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.primary,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
 });

@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     let settings = Settings::from_env()?;
 
     let pool = PgPoolOptions::new()
-        .max_connections(10)
+        .max_connections(settings.database_max_connections)
         .connect(&settings.database_url)
         .await?;
 
@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
 
     let state = AppState {
         repo: PgRepository::new(pool),
-        jwt: JwtService::new(settings.jwt_secret),
+        jwt: JwtService::new(settings.jwt_secret, settings.jwt_expiration_hours),
         metrics: Arc::new(MetricsRegistry::default()),
     };
 

@@ -62,15 +62,17 @@ export function AppButton({
 
 interface AppInputProps extends TextInputProps {
   label?: string;
+  testID?: string;
 }
 
-export function AppInput({ label, style, ...props }: AppInputProps): React.JSX.Element {
+export function AppInput({ label, style, testID, ...props }: AppInputProps): React.JSX.Element {
   return (
     <View style={styles.inputWrap}>
       {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
       <TextInput
         placeholderTextColor="#7A8D83"
         style={[styles.input, style]}
+        testID={testID}
         {...props}
       />
     </View>
