@@ -1,9 +1,15 @@
 use crate::application;
+use crate::domain::audit::NewAuditEvent;
 use crate::domain::auth::Role;
 use crate::domain::delivery::{NewDelivery, NewFailedDelivery};
 use crate::domain::error::DomainError;
-use crate::domain::orders::{NewOrder, OrderFilter, OrderStatus};
+use crate::domain::orders::{
+    NewOrder, Order, OrderFilter, OrderStatus, DEFAULT_ORDERS_PAGE, DEFAULT_ORDERS_PAGE_SIZE,
+    MAX_ORDERS_PAGE_SIZE,
+};
 use crate::domain::stock::Inbound;
+use crate::ports::audit_port::AuditPort;
+use crate::ports::orders_port::OrdersPort;
 use crate::AppState;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{
@@ -62,6 +68,36 @@ fn parse_status(status: &str) -> Result<OrderStatus, DomainError> {
 fn require_admin(ctx: &AuthContext) -> Result<(), DomainError> {
     if ctx.role != Role::Admin {
         return Err(DomainError::Unauthorized("requiere rol ADMIN".to_string()));
+    }
+    Ok(())
+}
+
+fn parse_page(page: Option<i64>) -> Result<i64, DomainError> {
+    let page = page.unwrap_or(DEFAULT_ORDERS_PAGE);
+    if page < 1 {
+        return Err(DomainError::Validation(
+            "page debe ser mayor o igual a 1".to_string(),
+        ));
+    }
+    Ok(page)
+}
+
+fn parse_page_size(page_size: Option<i64>) -> Result<i64, DomainError> {
+    let page_size = page_size.unwrap_or(DEFAULT_ORDERS_PAGE_SIZE);
+    if page_size < 1 || page_size > MAX_ORDERS_PAGE_SIZE {
+        return Err(DomainError::Validation(format!(
+            "page_size debe estar entre 1 y {}",
+            MAX_ORDERS_PAGE_SIZE
+        )));
+    }
+    Ok(page_size)
+}
+
+fn ensure_delivery_access(ctx: &AuthContext, order: &Order) -> Result<(), DomainError> {
+    if ctx.role == Role::Repartidor && order.assignee_id != Some(ctx.user_id) {
+        return Err(DomainError::Unauthorized(
+            "no podés registrar entregas de pedidos no asignados".to_string(),
+        ));
     }
     Ok(())
 }
@@ -248,13 +284,15 @@ pub struct ListOrdersQuery {
     date: Option<String>,
     status: Option<String>,
     assignee: Option<Uuid>,
+    page: Option<i64>,
+    page_size: Option<i64>,
 }
 
 pub async fn list_orders(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Query(query): Query<ListOrdersQuery>,
-) -> Result<Json<Vec<crate::domain::orders::Order>>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<crate::domain::orders::PaginatedOrders>, (StatusCode, Json<serde_json::Value>)> {
     let mut filter = OrderFilter {
         date: query
             .date
@@ -269,6 +307,8 @@ pub async fn list_orders(
             .transpose()
             .map_err(map_error)?,
         assignee: query.assignee,
+        page: parse_page(query.page).map_err(map_error)?,
+        page_size: parse_page_size(query.page_size).map_err(map_error)?,
     };
 
     if ctx.role == Role::Repartidor {
@@ -300,6 +340,18 @@ pub async fn change_order_status(
         .await
         .map_err(map_error)?;
 
+    state
+        .repo
+        .record_audit_event(NewAuditEvent {
+            actor_id: Some(ctx.user_id),
+            entity: "order".to_string(),
+            entity_id: Some(order.id),
+            action: "status_changed".to_string(),
+            details: json!({ "status": order.status.as_str() }),
+        })
+        .await
+        .map_err(map_error)?;
+
     Ok(Json(order))
 }
 
@@ -316,13 +368,26 @@ pub async fn assign_orders(
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
     require_admin(&ctx).map_err(map_error)?;
 
-    application::dispatch::assign_orders::execute(
-        &state.repo,
-        payload.order_ids,
-        payload.driver_id,
-    )
-    .await
-    .map_err(map_error)?;
+    let order_ids = payload.order_ids;
+    let driver_id = payload.driver_id;
+
+    application::dispatch::assign_orders::execute(&state.repo, order_ids.clone(), driver_id)
+        .await
+        .map_err(map_error)?;
+
+    for order_id in order_ids {
+        state
+            .repo
+            .record_audit_event(NewAuditEvent {
+                actor_id: Some(ctx.user_id),
+                entity: "order".to_string(),
+                entity_id: Some(order_id),
+                action: "assigned".to_string(),
+                details: json!({ "driver_id": driver_id }),
+            })
+            .await
+            .map_err(map_error)?;
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -337,12 +402,21 @@ pub struct RegisterDeliveryRequest {
 
 pub async fn register_delivery(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthContext>,
+    Extension(ctx): Extension<AuthContext>,
     Json(payload): Json<RegisterDeliveryRequest>,
 ) -> Result<
     (StatusCode, Json<crate::domain::delivery::Delivery>),
     (StatusCode, Json<serde_json::Value>),
 > {
+    let order = state
+        .repo
+        .get_order_by_id(payload.order_id)
+        .await
+        .map_err(map_error)?
+        .ok_or_else(|| map_error(DomainError::NotFound("pedido no encontrado".to_string())))?;
+
+    ensure_delivery_access(&ctx, &order).map_err(map_error)?;
+
     let input = NewDelivery {
         order_id: payload.order_id,
         llenas_entregadas: payload.llenas_entregadas,
@@ -351,6 +425,22 @@ pub async fn register_delivery(
     };
 
     let delivery = application::deliveries::register_delivery::execute(&state.repo, input)
+        .await
+        .map_err(map_error)?;
+
+    state
+        .repo
+        .record_audit_event(NewAuditEvent {
+            actor_id: Some(ctx.user_id),
+            entity: "delivery".to_string(),
+            entity_id: Some(delivery.id),
+            action: "created".to_string(),
+            details: json!({
+                "order_id": delivery.order_id,
+                "llenas_entregadas": delivery.llenas_entregadas,
+                "vacias_recibidas": delivery.vacias_recibidas
+            }),
+        })
         .await
         .map_err(map_error)?;
 
@@ -367,12 +457,21 @@ pub struct RegisterFailedDeliveryRequest {
 
 pub async fn register_failed_delivery(
     State(state): State<AppState>,
-    Extension(_ctx): Extension<AuthContext>,
+    Extension(ctx): Extension<AuthContext>,
     Json(payload): Json<RegisterFailedDeliveryRequest>,
 ) -> Result<
     (StatusCode, Json<crate::domain::delivery::FailedDelivery>),
     (StatusCode, Json<serde_json::Value>),
 > {
+    let order = state
+        .repo
+        .get_order_by_id(payload.order_id)
+        .await
+        .map_err(map_error)?
+        .ok_or_else(|| map_error(DomainError::NotFound("pedido no encontrado".to_string())))?;
+
+    ensure_delivery_access(&ctx, &order).map_err(map_error)?;
+
     let input = NewFailedDelivery {
         order_id: payload.order_id,
         reason: payload.reason,
@@ -386,6 +485,23 @@ pub async fn register_failed_delivery(
     };
 
     let failed = application::deliveries::register_failed_delivery::execute(&state.repo, input)
+        .await
+        .map_err(map_error)?;
+
+    state
+        .repo
+        .record_audit_event(NewAuditEvent {
+            actor_id: Some(ctx.user_id),
+            entity: "delivery_failure".to_string(),
+            entity_id: Some(failed.id),
+            action: "created".to_string(),
+            details: json!({
+                "order_id": failed.order_id,
+                "reason": failed.reason,
+                "reprogram_date": failed.reprogram_date,
+                "reprogram_time_slot": failed.reprogram_time_slot
+            }),
+        })
         .await
         .map_err(map_error)?;
 
@@ -413,6 +529,21 @@ pub async fn create_inbound(
     };
 
     application::stock::register_inbound::execute(&state.repo, input)
+        .await
+        .map_err(map_error)?;
+
+    state
+        .repo
+        .record_audit_event(NewAuditEvent {
+            actor_id: Some(ctx.user_id),
+            entity: "stock_inbound".to_string(),
+            entity_id: None,
+            action: "created".to_string(),
+            details: json!({
+                "date": payload.date,
+                "cantidad_llenas": payload.cantidad_llenas
+            }),
+        })
         .await
         .map_err(map_error)?;
 
@@ -470,4 +601,75 @@ pub async fn daily_report(
         .map_err(map_error)?;
 
     Ok(Json(report))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn sample_order(assignee_id: Option<Uuid>) -> Order {
+        Order {
+            id: Uuid::new_v4(),
+            address: "Calle 1".to_string(),
+            zone: "Z1".to_string(),
+            scheduled_date: chrono::NaiveDate::from_ymd_opt(2026, 2, 16).unwrap(),
+            time_slot: "MANANA".to_string(),
+            quantity: 1,
+            notes: None,
+            status: OrderStatus::Asignado,
+            assignee_id,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn repartidor_cannot_access_unassigned_order() {
+        let ctx = AuthContext {
+            user_id: Uuid::new_v4(),
+            role: Role::Repartidor,
+        };
+        let order = sample_order(None);
+
+        let result = ensure_delivery_access(&ctx, &order);
+        assert!(matches!(result, Err(DomainError::Unauthorized(_))));
+    }
+
+    #[test]
+    fn repartidor_can_access_own_order() {
+        let user_id = Uuid::new_v4();
+        let ctx = AuthContext {
+            user_id,
+            role: Role::Repartidor,
+        };
+        let order = sample_order(Some(user_id));
+
+        let result = ensure_delivery_access(&ctx, &order);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn admin_can_access_any_order() {
+        let ctx = AuthContext {
+            user_id: Uuid::new_v4(),
+            role: Role::Admin,
+        };
+        let order = sample_order(None);
+
+        let result = ensure_delivery_access(&ctx, &order);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_page_and_page_size_bounds() {
+        assert!(parse_page(Some(0)).is_err());
+        assert!(parse_page_size(Some(0)).is_err());
+        assert!(parse_page_size(Some(MAX_ORDERS_PAGE_SIZE + 1)).is_err());
+        assert_eq!(parse_page(None).expect("default page"), DEFAULT_ORDERS_PAGE);
+        assert_eq!(
+            parse_page_size(None).expect("default page_size"),
+            DEFAULT_ORDERS_PAGE_SIZE
+        );
+    }
 }

@@ -28,7 +28,7 @@ En esta primera versión el foco es **operación eficiente** (no “delivery ins
   - `POST /auth/login`
   - `GET /me`
   - `POST /orders`
-  - `GET /orders?date=&status=&assignee=`
+  - `GET /orders?date=&status=&assignee=&page=&page_size=` (paginado)
   - `PATCH /orders/{id}/status`
   - `POST /dispatch/assign`
   - `POST /deliveries`
@@ -39,6 +39,7 @@ En esta primera versión el foco es **operación eficiente** (no “delivery ins
   - `GET /metrics`
   - `GET /health`
   - Header de trazabilidad: `X-Request-Id` (entrada/salida)
+  - Auditoría mínima: tabla `audit_events` para cambios críticos
 
 ## Ejecutar Con Docker Compose
 ```bash
@@ -92,6 +93,6 @@ EXPO_PUBLIC_API_BASE_URL=http://localhost:8080
 - Admin: `admin` / `admin123`
 - Repartidor: `repartidor` / `repartidor123`
 
-Supuesto mínimo documentado para MVP: contraseña en texto plano en entorno dev para acelerar validación funcional inicial.
+Las contraseñas seed se almacenan con hash `bcrypt` mediante migración.
 
 Supuesto mínimo para entrega fallida/reprogramación: al registrar `POST /deliveries/failed`, el pedido queda en `ASIGNADO` y se actualiza fecha/franja sólo si se informan datos de reprogramación.

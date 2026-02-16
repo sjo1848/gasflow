@@ -133,7 +133,22 @@ export async function me(token: string): Promise<{ id: string; username: string;
 
 export async function listOrders(token: string, query = ''): Promise<Order[]> {
   const suffix = query ? `?${query}` : '';
-  return request(`/orders${suffix}`, { method: 'GET' }, token);
+  const response = await request<
+    | Order[]
+    | {
+        items: Order[];
+        page: number;
+        page_size: number;
+        total: number;
+        total_pages: number;
+      }
+  >(`/orders${suffix}`, { method: 'GET' }, token);
+
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  return response.items;
 }
 
 export async function createOrder(

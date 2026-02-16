@@ -1,8 +1,10 @@
+use crate::domain::audit::NewAuditEvent;
 use crate::domain::auth::{Role, User};
 use crate::domain::delivery::{Delivery, FailedDelivery, NewDelivery, NewFailedDelivery};
 use crate::domain::error::DomainError;
-use crate::domain::orders::{NewOrder, Order, OrderFilter, OrderStatus};
+use crate::domain::orders::{NewOrder, Order, OrderFilter, OrderStatus, PaginatedOrders};
 use crate::domain::stock::Inbound;
+use crate::ports::audit_port::AuditPort;
 use crate::ports::auth_port::AuthPort;
 use crate::ports::deliveries_port::DeliveriesPort;
 use crate::ports::orders_port::OrdersPort;
@@ -192,7 +194,36 @@ impl OrdersPort for PgRepository {
         row.try_into()
     }
 
-    async fn list_orders(&self, filter: OrderFilter) -> Result<Vec<Order>, DomainError> {
+    async fn list_orders(&self, filter: OrderFilter) -> Result<PaginatedOrders, DomainError> {
+        let page = filter.page;
+        let page_size = filter.page_size;
+        let offset = (page - 1) * page_size;
+
+        let mut count_builder =
+            QueryBuilder::<Postgres>::new("SELECT COUNT(*)::BIGINT FROM orders WHERE 1=1");
+
+        if let Some(date) = filter.date {
+            count_builder.push(" AND scheduled_date = ").push_bind(date);
+        }
+
+        if let Some(status) = &filter.status {
+            count_builder
+                .push(" AND status = ")
+                .push_bind(status.as_str());
+        }
+
+        if let Some(assignee) = filter.assignee {
+            count_builder
+                .push(" AND assignee_id = ")
+                .push_bind(assignee);
+        }
+
+        let total: i64 = count_builder
+            .build_query_scalar()
+            .fetch_one(&self.pool)
+            .await
+            .map_err(Self::map_sqlx_error)?;
+
         let mut builder = QueryBuilder::<Postgres>::new(
             "SELECT id, address, zone, scheduled_date, time_slot, quantity, notes, status, assignee_id, created_at, updated_at FROM orders WHERE 1=1",
         );
@@ -209,7 +240,12 @@ impl OrdersPort for PgRepository {
             builder.push(" AND assignee_id = ").push_bind(assignee);
         }
 
-        builder.push(" ORDER BY scheduled_date ASC, created_at ASC");
+        builder
+            .push(" ORDER BY scheduled_date ASC, created_at ASC")
+            .push(" LIMIT ")
+            .push_bind(page_size)
+            .push(" OFFSET ")
+            .push_bind(offset);
 
         let rows = builder
             .build_query_as::<OrderRow>()
@@ -217,7 +253,23 @@ impl OrdersPort for PgRepository {
             .await
             .map_err(Self::map_sqlx_error)?;
 
-        rows.into_iter().map(TryInto::try_into).collect()
+        let items: Vec<Order> = rows
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<_, _>>()?;
+        let total_pages = if total == 0 {
+            0
+        } else {
+            (total + page_size - 1) / page_size
+        };
+
+        Ok(PaginatedOrders {
+            items,
+            page,
+            page_size,
+            total,
+            total_pages,
+        })
     }
 
     async fn get_order_by_id(&self, order_id: Uuid) -> Result<Option<Order>, DomainError> {
@@ -441,5 +493,28 @@ impl StockPort for PgRepository {
             delivered_full: row.1,
             recovered_empty: row.2,
         })
+    }
+}
+
+#[async_trait]
+impl AuditPort for PgRepository {
+    async fn record_audit_event(&self, event: NewAuditEvent) -> Result<(), DomainError> {
+        sqlx::query(
+            r#"
+            INSERT INTO audit_events (id, actor_id, entity, entity_id, action, details)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            "#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(event.actor_id)
+        .bind(event.entity)
+        .bind(event.entity_id)
+        .bind(event.action)
+        .bind(event.details)
+        .execute(&self.pool)
+        .await
+        .map_err(Self::map_sqlx_error)?;
+
+        Ok(())
     }
 }

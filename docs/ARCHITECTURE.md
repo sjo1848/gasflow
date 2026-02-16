@@ -63,7 +63,7 @@ Ventaja: rapidez de entrega + orden + migración futura si escala (extracción d
 
 Pedidos:
 - `POST /orders`
-- `GET /orders?date=&status=&assignee=`
+- `GET /orders?date=&status=&assignee=&page=&page_size=` (paginado)
 - `PATCH /orders/{id}/status`
 
 Asignación:
@@ -82,6 +82,7 @@ Reportes:
 
 Observabilidad:
 - `GET /metrics`
+- tabla `audit_events` para auditoría mínima de acciones operativas
 
 ## 6. Despliegue Dev (Docker)
 - `backend` + `db` en `docker compose`

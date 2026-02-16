@@ -2,6 +2,10 @@ use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub const DEFAULT_ORDERS_PAGE: i64 = 1;
+pub const DEFAULT_ORDERS_PAGE_SIZE: i64 = 20;
+pub const MAX_ORDERS_PAGE_SIZE: i64 = 100;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OrderStatus {
@@ -73,4 +77,15 @@ pub struct OrderFilter {
     pub date: Option<NaiveDate>,
     pub status: Option<OrderStatus>,
     pub assignee: Option<Uuid>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PaginatedOrders {
+    pub items: Vec<Order>,
+    pub page: i64,
+    pub page_size: i64,
+    pub total: i64,
+    pub total_pages: i64,
 }

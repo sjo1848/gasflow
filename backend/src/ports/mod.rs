@@ -1,3 +1,4 @@
+pub mod audit_port;
 pub mod auth_port;
 pub mod deliveries_port;
 pub mod orders_port;

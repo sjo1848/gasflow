@@ -86,4 +86,4 @@ Datos: order_id, llenas_entregadas, vacias_recibidas, notas
 
 ## Estado de implementación (2026-02-16)
 - Completadas: `T1` `T2` `T3` `T4` `T5` `T6` `T7` `T8` `T9` `T10` `T11` `T12` `T13` `T14` `T15` `T16` `T17` `T18` `T19` `T20`.
-- Pendiente funcional: robustecer seguridad de credenciales (hashing) y cobertura de tests E2E en móvil.
+- Mejoras posteriores al MVP: cobertura de tests E2E en móvil y endurecimiento adicional de seguridad/observabilidad.
