@@ -1,11 +1,14 @@
-use crate::adapters::http::handlers;
+use crate::adapters::http::handlers::{self, ApiDoc};
 use crate::AppState;
 use axum::middleware;
 use axum::routing::{get, patch, post};
 use axum::Router;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 pub fn build_router(state: AppState) -> Router {
     let public_routes = Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(handlers::health))
         .route("/metrics", get(handlers::metrics))
         .route("/auth/login", post(handlers::login));

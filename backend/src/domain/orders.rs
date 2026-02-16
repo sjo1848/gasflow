@@ -1,12 +1,13 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 pub const DEFAULT_ORDERS_PAGE: i64 = 1;
 pub const DEFAULT_ORDERS_PAGE_SIZE: i64 = 20;
 pub const MAX_ORDERS_PAGE_SIZE: i64 = 100;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OrderStatus {
     Pendiente,
@@ -47,7 +48,7 @@ impl OrderStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Order {
     pub id: Uuid,
     pub address: String,
@@ -81,7 +82,7 @@ pub struct OrderFilter {
     pub page_size: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PaginatedOrders {
     pub items: Vec<Order>,
     pub page: i64,

@@ -1,13 +1,13 @@
 use crate::application;
 use crate::domain::audit::NewAuditEvent;
 use crate::domain::auth::Role;
-use crate::domain::delivery::{NewDelivery, NewFailedDelivery};
+use crate::domain::delivery::{Delivery, FailedDelivery, NewDelivery, NewFailedDelivery};
 use crate::domain::error::DomainError;
 use crate::domain::orders::{
-    NewOrder, Order, OrderFilter, OrderStatus, DEFAULT_ORDERS_PAGE, DEFAULT_ORDERS_PAGE_SIZE,
-    MAX_ORDERS_PAGE_SIZE,
+    NewOrder, Order, OrderFilter, OrderStatus, PaginatedOrders, DEFAULT_ORDERS_PAGE,
+    DEFAULT_ORDERS_PAGE_SIZE, MAX_ORDERS_PAGE_SIZE,
 };
-use crate::domain::stock::Inbound;
+use crate::domain::stock::{DailyOperationalReport, Inbound, StockSummary};
 use crate::ports::audit_port::AuditPort;
 use crate::ports::orders_port::OrdersPort;
 use crate::AppState;
@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Instant;
 use tracing::info;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
@@ -193,18 +194,28 @@ pub async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginRequest {
-    username: String,
-    password: String,
+    pub username: String,
+    pub password: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct LoginResponse {
-    access_token: String,
-    token_type: &'static str,
+    pub access_token: String,
+    pub token_type: &'static str,
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "auth"
+)]
 pub async fn login(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
@@ -224,13 +235,25 @@ pub async fn login(
     }))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MeResponse {
-    id: Uuid,
-    username: String,
-    role: Role,
+    pub id: Uuid,
+    pub username: String,
+    pub role: Role,
 }
 
+#[utoipa::path(
+    get,
+    path = "/me",
+    responses(
+        (status = 200, description = "Get current user profile", body = MeResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "auth",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn me(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -246,16 +269,30 @@ pub async fn me(
     }))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateOrderRequest {
-    address: String,
-    zone: String,
-    scheduled_date: String,
-    time_slot: String,
-    quantity: i32,
-    notes: Option<String>,
+    pub address: String,
+    pub zone: String,
+    pub scheduled_date: String,
+    pub time_slot: String,
+    pub quantity: i32,
+    pub notes: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/orders",
+    request_body = CreateOrderRequest,
+    responses(
+        (status = 201, description = "Order created successfully", body = Order),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "orders",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn create_order(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -281,13 +318,32 @@ pub async fn create_order(
 
 #[derive(Debug, Deserialize)]
 pub struct ListOrdersQuery {
-    date: Option<String>,
-    status: Option<String>,
-    assignee: Option<Uuid>,
-    page: Option<i64>,
-    page_size: Option<i64>,
+    pub date: Option<String>,
+    pub status: Option<String>,
+    pub assignee: Option<Uuid>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/orders",
+    params(
+        ("date" = Option<String>, Query, description = "Filter by scheduled date (YYYY-MM-DD)"),
+        ("status" = Option<String>, Query, description = "Filter by status"),
+        ("assignee" = Option<Uuid>, Query, description = "Filter by assignee ID"),
+        ("page" = Option<i64>, Query, description = "Page number"),
+        ("page_size" = Option<i64>, Query, description = "Items per page")
+    ),
+    responses(
+        (status = 200, description = "List of orders", body = PaginatedOrders),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "orders",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn list_orders(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -322,11 +378,29 @@ pub async fn list_orders(
     Ok(Json(orders))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ChangeStatusRequest {
-    status: String,
+    pub status: String,
 }
 
+#[utoipa::path(
+    patch,
+    path = "/orders/{id}/status",
+    params(
+        ("id" = Uuid, Path, description = "Order ID")
+    ),
+    request_body = ChangeStatusRequest,
+    responses(
+        (status = 200, description = "Order status updated", body = Order),
+        (status = 400, description = "Invalid transition"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order not found")
+    ),
+    tag = "orders",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn change_order_status(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -355,12 +429,26 @@ pub async fn change_order_status(
     Ok(Json(order))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AssignOrdersRequest {
-    order_ids: Vec<Uuid>,
-    driver_id: Uuid,
+    pub order_ids: Vec<Uuid>,
+    pub driver_id: Uuid,
 }
 
+#[utoipa::path(
+    post,
+    path = "/dispatch/assign",
+    request_body = AssignOrdersRequest,
+    responses(
+        (status = 204, description = "Orders assigned successfully"),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "dispatch",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn assign_orders(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -392,14 +480,29 @@ pub async fn assign_orders(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RegisterDeliveryRequest {
-    order_id: Uuid,
-    llenas_entregadas: i32,
-    vacias_recibidas: i32,
-    notes: Option<String>,
+    pub order_id: Uuid,
+    pub llenas_entregadas: i32,
+    pub vacias_recibidas: i32,
+    pub notes: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/deliveries",
+    request_body = RegisterDeliveryRequest,
+    responses(
+        (status = 201, description = "Delivery registered successfully", body = Delivery),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order not found")
+    ),
+    tag = "deliveries",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn register_delivery(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -447,14 +550,29 @@ pub async fn register_delivery(
     Ok((StatusCode::CREATED, Json(delivery)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RegisterFailedDeliveryRequest {
-    order_id: Uuid,
-    reason: String,
-    reprogram_date: Option<String>,
-    reprogram_time_slot: Option<String>,
+    pub order_id: Uuid,
+    pub reason: String,
+    pub reprogram_date: Option<String>,
+    pub reprogram_time_slot: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/deliveries/failed",
+    request_body = RegisterFailedDeliveryRequest,
+    responses(
+        (status = 201, description = "Failed delivery registered successfully", body = FailedDelivery),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order not found")
+    ),
+    tag = "deliveries",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn register_failed_delivery(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -508,13 +626,27 @@ pub async fn register_failed_delivery(
     Ok((StatusCode::CREATED, Json(failed)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateInboundRequest {
-    date: String,
-    cantidad_llenas: i32,
-    notes: Option<String>,
+    pub date: String,
+    pub cantidad_llenas: i32,
+    pub notes: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/stock/inbounds",
+    request_body = CreateInboundRequest,
+    responses(
+        (status = 201, description = "Inbound stock registered"),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "stock",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn create_inbound(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -552,9 +684,24 @@ pub async fn create_inbound(
 
 #[derive(Debug, Deserialize)]
 pub struct StockSummaryQuery {
-    date: Option<String>,
+    pub date: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/stock/summary",
+    params(
+        ("date" = Option<String>, Query, description = "Reference date (YYYY-MM-DD)")
+    ),
+    responses(
+        (status = 200, description = "Stock summary", body = StockSummary),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "stock",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn stock_summary(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -578,9 +725,24 @@ pub async fn stock_summary(
 
 #[derive(Debug, Deserialize)]
 pub struct DailyReportQuery {
-    date: Option<String>,
+    pub date: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/reports/daily",
+    params(
+        ("date" = Option<String>, Query, description = "Report date (YYYY-MM-DD)")
+    ),
+    responses(
+        (status = 200, description = "Daily operational report", body = DailyOperationalReport),
+        (status = 401, description = "Unauthorized")
+    ),
+    tag = "reports",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn daily_report(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -601,6 +763,55 @@ pub async fn daily_report(
         .map_err(map_error)?;
 
     Ok(Json(report))
+}
+
+use utoipa::OpenApi;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        login,
+        me,
+        create_order,
+        list_orders,
+        change_order_status,
+        assign_orders,
+        register_delivery,
+        register_failed_delivery,
+        create_inbound,
+        stock_summary,
+        daily_report
+    ),
+    components(
+        schemas(
+            LoginRequest, LoginResponse, MeResponse, Role,
+            CreateOrderRequest, Order, OrderStatus, PaginatedOrders,
+            ChangeStatusRequest, AssignOrdersRequest,
+            RegisterDeliveryRequest, Delivery,
+            RegisterFailedDeliveryRequest, FailedDelivery,
+            CreateInboundRequest, StockSummary, DailyOperationalReport
+        )
+    ),
+    modifiers(&SecurityAddon)
+)]
+pub struct ApiDoc;
+
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearer_auth",
+                utoipa::openapi::security::SecurityScheme::Http(
+                    utoipa::openapi::security::HttpBuilder::new()
+                        .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
+                        .bearer_format("JWT")
+                        .build(),
+                ),
+            );
+        }
+    }
 }
 
 #[cfg(test)]

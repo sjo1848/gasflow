@@ -1,8 +1,9 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::Serialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Delivery {
     pub id: Uuid,
     pub order_id: Uuid,
@@ -20,7 +21,7 @@ pub struct NewDelivery {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FailedDelivery {
     pub id: Uuid,
     pub order_id: Uuid,

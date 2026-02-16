@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 #[derive(Debug, Clone)]
 pub struct Inbound {
@@ -8,7 +9,7 @@ pub struct Inbound {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct StockSummary {
     pub date: Option<NaiveDate>,
     pub llenas_ingresadas: i64,
@@ -19,7 +20,7 @@ pub struct StockSummary {
     pub pendientes_recuperar: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DailyOperationalReport {
     pub date: NaiveDate,
     pub entregas_dia: i64,
