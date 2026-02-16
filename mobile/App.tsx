@@ -1,5 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { login, me } from './src/api/client';
 import { AdminOrdersScreen } from './src/screens/AdminOrdersScreen';
 import { AdminStockScreen } from './src/screens/AdminStockScreen';
@@ -97,6 +106,7 @@ export default function App(): React.JSX.Element {
     if (!isModeAllowed(session.role, mode)) return null;
     return mode;
   }, [session, mode]);
+  const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
 
   if (loading) {
     return (
@@ -139,7 +149,7 @@ export default function App(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.appWrap}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, topInset > 0 ? { paddingTop: spacing.md + topInset } : null]}>
         <View>
           <Text style={styles.appName}>GasFlow</Text>
           <Text style={styles.appMeta}>
