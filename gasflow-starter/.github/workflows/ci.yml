@@ -1,0 +1,59 @@
+name: GasFlow CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: gasflow
+          POSTGRES_USER: gasflow
+          POSTGRES_PASSWORD: gasflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Check formatting
+        working-directory: backend
+        run: cargo fmt --check
+      - name: Run all tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://gasflow:gasflow@localhost:5432/gasflow
+        run: cargo test
+
+  mobile-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci
+      - name: Type check
+        working-directory: mobile
+        run: npx tsc --noEmit
+      - name: Run tests
+        working-directory: mobile
+        run: npm test -- --runInBand

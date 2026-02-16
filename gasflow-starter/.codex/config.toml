@@ -1,0 +1,6 @@
+# .codex/config.toml (plantilla)
+# Ajustá el modelo según tu cuenta/plan.
+# Ver docs oficiales: https://developers.openai.com/codex/cli/
+
+# model = "gpt-5"  # ejemplo
+# approval = "prompt"  # pedir confirmación antes de comandos
