@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 import { AppButton, AppInput, Card, ScreenBackdrop } from '../ui/primitives';
 
@@ -24,13 +33,15 @@ export function LoginScreen({ onSubmit }: Props): React.JSX.Element {
       setLoading(false);
     }
   };
+  const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
       <ScreenBackdrop />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboard}
+        style={[styles.keyboard, topInset > 0 ? { paddingTop: topInset } : null]}
       >
         <View style={styles.hero}>
           <Text style={styles.brand}>GasFlow</Text>
@@ -70,7 +81,7 @@ export function LoginScreen({ onSubmit }: Props): React.JSX.Element {
           <Text style={styles.footnote}>Admin: admin/admin123 • Repartidor: repartidor/repartidor123</Text>
         </Card>
       </KeyboardAvoidingView>
-    </View>
+    </SafeAreaView>
   );
 }
 

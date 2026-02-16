@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Role } from '../types';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 import { AppMode, availableModes } from '../utils/mode';
@@ -19,11 +19,13 @@ export function ModeSelectScreen({
   onLogout,
 }: Props): React.JSX.Element {
   const modes = availableModes(role);
+  const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
       <ScreenBackdrop />
-      <View style={styles.content}>
+      <View style={[styles.content, topInset > 0 ? { paddingTop: spacing.xl + topInset } : null]}>
         <Text style={styles.title}>Elegí modo de trabajo</Text>
         <Text style={styles.subtitle}>
           {username} • {role}
@@ -51,7 +53,7 @@ export function ModeSelectScreen({
 
         <AppButton title="Cerrar sesión" tone="danger" onPress={onLogout} />
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
