@@ -1,7 +1,9 @@
 import React from 'react';
-import { Button, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Role } from '../types';
+import { colors, radii, spacing, typography } from '../theme/tokens';
 import { AppMode, availableModes } from '../utils/mode';
+import { AppButton, Card, ScreenBackdrop } from '../ui/primitives';
 
 interface Props {
   role: Role;
@@ -10,22 +12,45 @@ interface Props {
   onLogout: () => void;
 }
 
-export function ModeSelectScreen({ role, username, onSelectMode, onLogout }: Props): React.JSX.Element {
+export function ModeSelectScreen({
+  role,
+  username,
+  onSelectMode,
+  onLogout,
+}: Props): React.JSX.Element {
   const modes = availableModes(role);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Modo de operación</Text>
-      <Text style={styles.subtitle}>{username} ({role})</Text>
-      {modes.map((mode) => (
-        <Button
-          key={mode}
-          title={mode === 'ADMIN' ? 'Entrar como Admin' : 'Entrar como Repartidor'}
-          onPress={() => onSelectMode(mode)}
-        />
-      ))}
-      <View style={styles.separator} />
-      <Button title="Cerrar sesión" onPress={onLogout} color="#8A2E2E" />
+      <ScreenBackdrop />
+      <View style={styles.content}>
+        <Text style={styles.title}>Elegí modo de trabajo</Text>
+        <Text style={styles.subtitle}>
+          {username} • {role}
+        </Text>
+
+        <View style={styles.modeGrid}>
+          {modes.map((mode) => (
+            <Pressable
+              key={mode}
+              onPress={() => onSelectMode(mode)}
+              style={({ pressed }) => [styles.modeCard, pressed ? styles.modeCardPressed : null]}
+            >
+              <Card style={styles.modeInner}>
+                <Text style={styles.modeEmoji}>{mode === 'ADMIN' ? '🧭' : '🚚'}</Text>
+                <Text style={styles.modeTitle}>{mode === 'ADMIN' ? 'Panel Admin' : 'Panel Repartidor'}</Text>
+                <Text style={styles.modeText}>
+                  {mode === 'ADMIN'
+                    ? 'Crear pedidos, asignar rutas y controlar stock.'
+                    : 'Ver asignaciones y registrar entregas en campo.'}
+                </Text>
+              </Card>
+            </Pressable>
+          ))}
+        </View>
+
+        <AppButton title="Cerrar sesión" tone="danger" onPress={onLogout} />
+      </View>
     </View>
   );
 }
@@ -33,21 +58,48 @@ export function ModeSelectScreen({ role, username, onSelectMode, onLogout }: Pro
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    backgroundColor: '#FDFCF8',
+    backgroundColor: colors.canvas,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+    gap: spacing.lg,
     justifyContent: 'center',
-    gap: 12,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#213547',
+    ...typography.title,
+    color: colors.textStrong,
   },
   subtitle: {
-    color: '#576574',
-    marginBottom: 8,
+    ...typography.body,
+    color: colors.textMuted,
+    marginTop: -spacing.sm,
   },
-  separator: {
-    height: 8,
+  modeGrid: {
+    gap: spacing.md,
+  },
+  modeCard: {
+    borderRadius: radii.lg,
+  },
+  modeCardPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.995 }],
+  },
+  modeInner: {
+    borderRadius: radii.lg,
+    gap: spacing.xs,
+    minHeight: 132,
+  },
+  modeEmoji: {
+    fontSize: 22,
+  },
+  modeTitle: {
+    ...typography.section,
+    color: colors.textStrong,
+  },
+  modeText: {
+    ...typography.body,
+    color: colors.textMuted,
   },
 });

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Button, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { createInbound, dailyReport, stockSummary } from '../api/client';
 import { DailyReport, StockSummary } from '../types';
+import { colors, spacing, typography } from '../theme/tokens';
+import { AppButton, AppInput, Card, Chip } from '../ui/primitives';
 
 interface Props {
   token: string;
@@ -43,56 +45,135 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Admin • Stock y Reporte</Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Text style={styles.title}>Stock y Reporte Diario</Text>
+      <Text style={styles.subtitle}>Control de ciclo llenas/vacías</Text>
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <TextInput style={styles.input} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
-      <TextInput
-        style={styles.input}
-        value={cantidad}
-        onChangeText={setCantidad}
-        placeholder="Cantidad llenas"
-        keyboardType="number-pad"
-      />
-      <Button title="Registrar ingreso" onPress={handleInbound} />
-      <Button title="Refrescar" onPress={refresh} />
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Registrar ingreso de proveedor</Text>
+        <AppInput label="Fecha" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+        <AppInput
+          label="Cantidad de llenas"
+          value={cantidad}
+          onChangeText={setCantidad}
+          keyboardType="number-pad"
+        />
+        <View style={styles.actionsRow}>
+          <AppButton title="Registrar" onPress={handleInbound} />
+          <AppButton title="Actualizar" tone="ghost" onPress={refresh} />
+        </View>
+      </Card>
 
       {summary ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Resumen de stock</Text>
-          <Text>Llenas ingresadas: {summary.llenas_ingresadas}</Text>
-          <Text>Llenas entregadas: {summary.llenas_entregadas}</Text>
-          <Text>Vacías recibidas: {summary.vacias_recibidas}</Text>
-          <Text>Pendiente: {summary.pendientes_recuperar}</Text>
-        </View>
+        <Card style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.sectionTitle}>Resumen acumulado</Text>
+            <Chip label="En línea" tone="success" />
+          </View>
+          <View style={styles.grid}>
+            <View style={styles.statTile}>
+              <Text style={styles.statLabel}>Llenas ingresadas</Text>
+              <Text style={styles.statValue}>{summary.llenas_ingresadas}</Text>
+            </View>
+            <View style={styles.statTile}>
+              <Text style={styles.statLabel}>Llenas entregadas</Text>
+              <Text style={styles.statValue}>{summary.llenas_entregadas}</Text>
+            </View>
+            <View style={styles.statTile}>
+              <Text style={styles.statLabel}>Vacías recibidas</Text>
+              <Text style={styles.statValue}>{summary.vacias_recibidas}</Text>
+            </View>
+            <View style={styles.statTile}>
+              <Text style={styles.statLabel}>Pendiente</Text>
+              <Text style={styles.statValue}>{summary.pendientes_recuperar}</Text>
+            </View>
+          </View>
+        </Card>
       ) : null}
 
       {report ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Reporte diario ({report.date})</Text>
-          <Text>Entregas: {report.entregas_dia}</Text>
-          <Text>Llenas: {report.llenas_entregadas}</Text>
-          <Text>Vacías: {report.vacias_recibidas}</Text>
-          <Text>Pendiente: {report.pendiente}</Text>
-        </View>
+        <Card style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.sectionTitle}>Reporte operativo</Text>
+            <Chip label={report.date} tone="info" />
+          </View>
+          <Text style={styles.metaLine}>Entregas del día: {report.entregas_dia}</Text>
+          <Text style={styles.metaLine}>Llenas entregadas: {report.llenas_entregadas}</Text>
+          <Text style={styles.metaLine}>Vacías recuperadas: {report.vacias_recibidas}</Text>
+          <Text style={styles.metaLine}>Pendiente: {report.pendiente}</Text>
+        </Card>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#EEF5ED', gap: 8 },
-  title: { fontSize: 20, fontWeight: '700', color: '#1D3557' },
-  input: {
-    borderWidth: 1,
-    borderColor: '#BFD8BD',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
+  container: {
+    flex: 1,
+    backgroundColor: colors.canvas,
   },
-  card: { marginTop: 8, borderWidth: 1, borderColor: '#D0E8D0', borderRadius: 8, padding: 10, backgroundColor: '#FFF' },
-  cardTitle: { fontWeight: '700', marginBottom: 4 },
-  error: { color: '#B00020' },
+  content: {
+    padding: spacing.lg,
+    gap: spacing.md,
+    paddingBottom: 120,
+  },
+  title: {
+    ...typography.title,
+    color: colors.textStrong,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.textMuted,
+    marginTop: -8,
+  },
+  error: {
+    ...typography.caption,
+    color: colors.danger,
+  },
+  card: {
+    gap: spacing.sm,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    ...typography.section,
+    color: colors.textStrong,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  statTile: {
+    width: '48%',
+    backgroundColor: colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.sm,
+    gap: 2,
+  },
+  statLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  statValue: {
+    ...typography.title,
+    color: colors.textStrong,
+    fontSize: 20,
+  },
+  metaLine: {
+    ...typography.body,
+    color: colors.textMuted,
+  },
 });

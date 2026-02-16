@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Button, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { registerDelivery, registerFailedDelivery } from '../api/client';
 import { Order } from '../types';
+import { colors, spacing, typography } from '../theme/tokens';
+import { AppButton, AppInput, Card, Chip } from '../ui/primitives';
 
 interface Props {
   token: string;
@@ -29,7 +31,7 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
         llenas_entregadas: Number(llenas),
         vacias_recibidas: Number(vacias),
       });
-      setMessage('Entrega registrada');
+      setMessage('Entrega registrada correctamente.');
       await onSuccess();
     } catch (err) {
       setError((err as Error).message);
@@ -48,7 +50,7 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
         reprogram_date: reprogramDate,
         reprogram_time_slot: reprogramSlot,
       });
-      setMessage('Entrega fallida registrada y reprogramada');
+      setMessage('Entrega fallida registrada y pedido reprogramado.');
       await onSuccess();
     } catch (err) {
       setError((err as Error).message);
@@ -57,37 +59,77 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Repartidor • Registrar entrega</Text>
-      <Text style={styles.selected}>Pedido: {selectedOrder ? selectedOrder.id : 'seleccionar pedido'}</Text>
+      <Text style={styles.title}>Registrar entrega</Text>
+      <Card style={styles.orderCard}>
+        <View style={styles.orderHeader}>
+          <Text style={styles.orderLabel}>Pedido seleccionado</Text>
+          <Chip label={selectedOrder ? selectedOrder.status : 'SIN_PEDIDO'} tone="info" />
+        </View>
+        <Text style={styles.orderId}>{selectedOrder ? selectedOrder.id : 'Seleccioná un pedido primero'}</Text>
+      </Card>
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {message ? <Text style={styles.ok}>{message}</Text> : null}
 
-      <TextInput style={styles.input} value={llenas} onChangeText={setLlenas} placeholder="Llenas" keyboardType="number-pad" />
-      <TextInput style={styles.input} value={vacias} onChangeText={setVacias} placeholder="Vacías" keyboardType="number-pad" />
-      <Button title="Marcar entregado" onPress={handleDelivered} disabled={!selectedOrder} />
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Entrega exitosa</Text>
+        <AppInput label="Llenas entregadas" value={llenas} onChangeText={setLlenas} keyboardType="number-pad" />
+        <AppInput label="Vacías recibidas" value={vacias} onChangeText={setVacias} keyboardType="number-pad" />
+        <AppButton title="Marcar como entregado" onPress={handleDelivered} disabled={!selectedOrder} />
+      </Card>
 
-      <View style={styles.divider} />
-      <TextInput style={styles.input} value={reason} onChangeText={setReason} placeholder="Motivo" />
-      <TextInput style={styles.input} value={reprogramDate} onChangeText={setReprogramDate} placeholder="Reprogramar fecha YYYY-MM-DD" />
-      <TextInput style={styles.input} value={reprogramSlot} onChangeText={setReprogramSlot} placeholder="Franja" />
-      <Button title="Registrar fallida" onPress={handleFailed} disabled={!selectedOrder} color="#8A2E2E" />
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Entrega fallida / reprogramación</Text>
+        <AppInput label="Motivo" value={reason} onChangeText={setReason} />
+        <AppInput label="Nueva fecha" value={reprogramDate} onChangeText={setReprogramDate} placeholder="YYYY-MM-DD" />
+        <AppInput label="Nueva franja" value={reprogramSlot} onChangeText={setReprogramSlot} />
+        <AppButton title="Registrar fallida" tone="danger" onPress={handleFailed} disabled={!selectedOrder} />
+      </Card>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#F2F6FF', gap: 8 },
-  title: { fontSize: 18, fontWeight: '700' },
-  selected: { color: '#1D3557' },
-  input: {
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
+  container: {
+    flex: 1,
+    backgroundColor: colors.canvas,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
-  divider: { height: 8 },
-  error: { color: '#B00020' },
-  ok: { color: '#0A7E2F' },
+  title: {
+    ...typography.title,
+    color: colors.textStrong,
+  },
+  orderCard: {
+    gap: spacing.xs,
+  },
+  orderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  orderLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  orderId: {
+    ...typography.body,
+    color: colors.textStrong,
+  },
+  error: {
+    ...typography.caption,
+    color: colors.danger,
+  },
+  ok: {
+    ...typography.caption,
+    color: colors.success,
+  },
+  card: {
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    ...typography.section,
+    color: colors.textStrong,
+  },
 });

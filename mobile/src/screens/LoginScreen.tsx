@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Button, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { colors, radii, spacing, typography } from '../theme/tokens';
+import { AppButton, AppInput, Card, ScreenBackdrop } from '../ui/primitives';
 
 interface Props {
   onSubmit: (username: string, password: string) => Promise<void>;
@@ -25,25 +27,49 @@ export function LoginScreen({ onSubmit }: Props): React.JSX.Element {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>GasFlow</Text>
-      <Text style={styles.subtitle}>Login</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="usuario"
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="contraseña"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {loading ? <ActivityIndicator /> : <Button title="Ingresar" onPress={handleLogin} />}
-      <Text style={styles.hint}>Admin: admin/admin123 | Repartidor: repartidor/repartidor123</Text>
+      <ScreenBackdrop />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboard}
+      >
+        <View style={styles.hero}>
+          <Text style={styles.brand}>GasFlow</Text>
+          <Text style={styles.tagline}>Operación profesional de reparto, sin fricción.</Text>
+        </View>
+
+        <Card style={styles.formCard}>
+          <Text style={styles.formTitle}>Ingresar</Text>
+          <Text style={styles.formHint}>Usá credenciales de Admin o Repartidor.</Text>
+
+          <AppInput
+            label="Usuario"
+            placeholder="admin"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+          />
+          <AppInput
+            label="Contraseña"
+            placeholder="••••••••"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          {loading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.loadingText}>Validando acceso...</Text>
+            </View>
+          ) : (
+            <AppButton title="Entrar al sistema" onPress={handleLogin} />
+          )}
+
+          <Text style={styles.footnote}>Admin: admin/admin123 • Repartidor: repartidor/repartidor123</Text>
+        </Card>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -51,35 +77,56 @@ export function LoginScreen({ onSubmit }: Props): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
-    padding: 24,
+    backgroundColor: colors.canvas,
+  },
+  keyboard: {
+    flex: 1,
     justifyContent: 'center',
-    gap: 12,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#0B3D2E',
+  hero: {
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
   },
-  subtitle: {
-    fontSize: 18,
-    color: '#2F3E46',
-    marginBottom: 8,
+  brand: {
+    ...typography.display,
+    color: colors.textStrong,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#CAD2C5',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
+  tagline: {
+    ...typography.body,
+    color: colors.textMuted,
+    maxWidth: 280,
+  },
+  formCard: {
+    borderRadius: radii.xl,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  formTitle: {
+    ...typography.title,
+    color: colors.textStrong,
+  },
+  formHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: -4,
   },
   error: {
-    color: '#B00020',
+    ...typography.caption,
+    color: colors.danger,
   },
-  hint: {
-    marginTop: 8,
-    color: '#555',
-    fontSize: 12,
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textMuted,
+  },
+  footnote: {
+    ...typography.caption,
+    color: colors.textMuted,
   },
 });
