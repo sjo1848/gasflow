@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -9,8 +8,9 @@ import {
   Text,
   View,
 } from 'react-native';
+import { getApiBaseUrl } from '../api/client';
 import { colors, radii, spacing, typography } from '../theme/tokens';
-import { AppButton, AppInput, Card, ScreenBackdrop } from '../ui/primitives';
+import { AppButton, AppInput, Card, InlineMessage, ScreenBackdrop } from '../ui/primitives';
 
 interface Props {
   onSubmit: (username: string, password: string) => Promise<void>;
@@ -67,18 +67,12 @@ export function LoginScreen({ onSubmit }: Props): React.JSX.Element {
             secureTextEntry
           />
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <InlineMessage tone="error" text={error} /> : null}
 
-          {loading ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color={colors.primary} />
-              <Text style={styles.loadingText}>Validando acceso...</Text>
-            </View>
-          ) : (
-            <AppButton title="Entrar al sistema" onPress={handleLogin} />
-          )}
+          <AppButton title="Entrar al sistema" onPress={handleLogin} loading={loading} />
 
           <Text style={styles.footnote}>Admin: admin/admin123 • Repartidor: repartidor/repartidor123</Text>
+          <Text style={styles.apiHint}>API: {getApiBaseUrl()}</Text>
         </Card>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -123,20 +117,11 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: -4,
   },
-  error: {
+  footnote: {
     ...typography.caption,
-    color: colors.danger,
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  loadingText: {
-    ...typography.body,
     color: colors.textMuted,
   },
-  footnote: {
+  apiHint: {
     ...typography.caption,
     color: colors.textMuted,
   },

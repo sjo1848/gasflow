@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ interface AppButtonProps {
   title: string;
   onPress: () => void;
   disabled?: boolean;
+  loading?: boolean;
   tone?: ButtonTone;
 }
 
@@ -23,6 +25,7 @@ export function AppButton({
   title,
   onPress,
   disabled = false,
+  loading = false,
   tone = 'primary',
 }: AppButtonProps): React.JSX.Element {
   const toneStyle =
@@ -35,19 +38,24 @@ export function AppButton({
           : styles.btnGhost;
 
   const textStyle = tone === 'ghost' ? styles.btnTextGhost : styles.btnText;
+  const spinnerColor = tone === 'ghost' ? colors.textStrong : '#FFFFFF';
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={disabled || loading}
       style={({ pressed }) => [
         styles.btnBase,
         toneStyle,
-        pressed && !disabled ? styles.btnPressed : null,
-        disabled ? styles.btnDisabled : null,
+        pressed && !disabled && !loading ? styles.btnPressed : null,
+        disabled || loading ? styles.btnDisabled : null,
       ]}
     >
-      <Text style={[textStyle, disabled ? styles.btnTextDisabled : null]}>{title}</Text>
+      {loading ? (
+        <ActivityIndicator color={spinnerColor} size="small" />
+      ) : (
+        <Text style={[textStyle, disabled ? styles.btnTextDisabled : null]}>{title}</Text>
+      )}
     </Pressable>
   );
 }
@@ -103,6 +111,58 @@ export function ScreenBackdrop(): React.JSX.Element {
       <View style={styles.blobA} />
       <View style={styles.blobB} />
     </>
+  );
+}
+
+interface InlineMessageProps {
+  tone?: 'info' | 'success' | 'warning' | 'error';
+  text: string;
+}
+
+export function InlineMessage({
+  tone = 'info',
+  text,
+}: InlineMessageProps): React.JSX.Element {
+  const toneStyle =
+    tone === 'success'
+      ? styles.msgSuccess
+      : tone === 'warning'
+        ? styles.msgWarning
+        : tone === 'error'
+          ? styles.msgError
+          : styles.msgInfo;
+
+  return (
+    <View style={[styles.msgBase, toneStyle]}>
+      <Text style={styles.msgText}>{text}</Text>
+    </View>
+  );
+}
+
+interface EmptyStateProps {
+  title: string;
+  description: string;
+}
+
+export function EmptyState({ title, description }: EmptyStateProps): React.JSX.Element {
+  return (
+    <View style={styles.emptyWrap}>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyDescription}>{description}</Text>
+    </View>
+  );
+}
+
+interface LoadingBlockProps {
+  label?: string;
+}
+
+export function LoadingBlock({ label = 'Cargando...' }: LoadingBlockProps): React.JSX.Element {
+  return (
+    <View style={styles.loadingWrap}>
+      <ActivityIndicator color={colors.primary} size="small" />
+      <Text style={styles.loadingText}>{label}</Text>
+    </View>
   );
 }
 
@@ -223,5 +283,62 @@ const styles = StyleSheet.create({
     borderRadius: 150,
     backgroundColor: '#FBE5C8',
     opacity: 0.45,
+  },
+  msgBase: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  msgInfo: {
+    backgroundColor: '#EAF3FA',
+    borderColor: '#9BC7E3',
+  },
+  msgSuccess: {
+    backgroundColor: '#E8F8EE',
+    borderColor: '#9AD9B0',
+  },
+  msgWarning: {
+    backgroundColor: '#FFF3E3',
+    borderColor: '#F4C389',
+  },
+  msgError: {
+    backgroundColor: '#FDECEC',
+    borderColor: '#F5A3A3',
+  },
+  msgText: {
+    ...typography.caption,
+    color: colors.textStrong,
+  },
+  emptyWrap: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSoft,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  emptyTitle: {
+    ...typography.section,
+    color: colors.textStrong,
+    textAlign: 'center',
+  },
+  emptyDescription: {
+    ...typography.body,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  loadingWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  loadingText: {
+    ...typography.caption,
+    color: colors.textMuted,
   },
 });

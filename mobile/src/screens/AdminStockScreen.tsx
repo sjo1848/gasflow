@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { createInbound, dailyReport, stockSummary } from '../api/client';
 import { DailyReport, StockSummary } from '../types';
 import { colors, spacing, typography } from '../theme/tokens';
-import { AppButton, AppInput, Card, Chip } from '../ui/primitives';
+import { AppButton, AppInput, Card, Chip, EmptyState, InlineMessage, LoadingBlock } from '../ui/primitives';
 
 interface Props {
   token: string;
@@ -15,41 +15,66 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
   const [summary, setSummary] = useState<StockSummary | null>(null);
   const [report, setReport] = useState<DailyReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [savingInbound, setSavingInbound] = useState(false);
 
-  const refresh = async (): Promise<void> => {
+  const refresh = async (showLoader = true): Promise<void> => {
     try {
+      if (showLoader) {
+        setLoading(true);
+      }
       setError(null);
       const [s, r] = await Promise.all([stockSummary(token), dailyReport(token, date)]);
       setSummary(s);
       setReport(r);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      if (showLoader) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    void refresh();
+    void refresh(true);
   }, []);
 
   const handleInbound = async (): Promise<void> => {
+    if (!Number.isFinite(Number(cantidad)) || Number(cantidad) <= 0) {
+      setError('La cantidad debe ser un número mayor a cero.');
+      return;
+    }
+
     try {
+      setSavingInbound(true);
       setError(null);
+      setMessage(null);
       await createInbound(token, {
         date,
         cantidad_llenas: Number(cantidad),
       });
-      await refresh();
+      setMessage('Ingreso registrado y resumen actualizado.');
+      await refresh(false);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setSavingInbound(false);
     }
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.title}>Stock y Reporte Diario</Text>
       <Text style={styles.subtitle}>Control de ciclo llenas/vacías</Text>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <InlineMessage tone="error" text={error} /> : null}
+      {message ? <InlineMessage tone="success" text={message} /> : null}
 
       <Card style={styles.card}>
         <Text style={styles.sectionTitle}>Registrar ingreso de proveedor</Text>
@@ -61,12 +86,14 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
           keyboardType="number-pad"
         />
         <View style={styles.actionsRow}>
-          <AppButton title="Registrar" onPress={handleInbound} />
-          <AppButton title="Actualizar" tone="ghost" onPress={refresh} />
+          <AppButton title="Registrar" onPress={handleInbound} loading={savingInbound} />
+          <AppButton title="Actualizar" tone="ghost" onPress={() => void refresh(true)} />
         </View>
       </Card>
 
-      {summary ? (
+      {loading ? (
+        <LoadingBlock label="Actualizando indicadores..." />
+      ) : summary ? (
         <Card style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.sectionTitle}>Resumen acumulado</Text>
@@ -105,6 +132,13 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
           <Text style={styles.metaLine}>Pendiente: {report.pendiente}</Text>
         </Card>
       ) : null}
+
+      {!loading && !summary && !report ? (
+        <EmptyState
+          title="Sin datos operativos todavía"
+          description="Registrá un ingreso o refrescá para consultar el resumen del día."
+        />
+      ) : null}
     </ScrollView>
   );
 }
@@ -127,10 +161,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textMuted,
     marginTop: -8,
-  },
-  error: {
-    ...typography.caption,
-    color: colors.danger,
   },
   card: {
     gap: spacing.sm,

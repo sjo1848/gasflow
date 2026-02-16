@@ -1,6 +1,63 @@
 import { DailyReport, Order, Role, StockSummary } from '../types';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8080';
+const DEFAULT_API_BASE_URL = 'http://localhost:8080';
+const REQUEST_TIMEOUT_MS = 12000;
+const NETWORK_RETRIES = 1;
+
+const API_BASE_URL = normalizeApiBaseUrl(
+  process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL,
+);
+
+function normalizeApiBaseUrl(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function parseErrorBody(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return '';
+
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: string };
+    if (typeof parsed.error === 'string' && parsed.error.trim()) {
+      return parsed.error.trim();
+    }
+  } catch {
+    // El backend no siempre responde JSON; usamos texto plano como fallback.
+  }
+
+  return trimmed;
+}
+
+function humanizeHttpError(status: number, body: string): string {
+  const parsedBody = parseErrorBody(body);
+  if (status === 401) {
+    return 'Sesión inválida o expirada. Volvé a iniciar sesión.';
+  }
+  if (status === 403) {
+    return parsedBody || 'No tenés permisos para esta acción.';
+  }
+  if (status === 404) {
+    return parsedBody || 'Recurso no encontrado.';
+  }
+  if (status >= 500) {
+    return parsedBody || 'Error interno del servidor.';
+  }
+  return parsedBody || `Error HTTP ${status}`;
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 async function request<T>(
   path: string,
@@ -16,21 +73,49 @@ async function request<T>(
     headers.authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const url = `${API_BASE_URL}${path}`;
+  for (let attempt = 0; attempt <= NETWORK_RETRIES; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(url, {
+        ...options,
+        headers,
+      });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || `HTTP ${response.status}`);
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(humanizeHttpError(response.status, body));
+      }
+
+      if (response.status === 204) {
+        return {} as T;
+      }
+
+      return (await response.json()) as T;
+    } catch (err) {
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      const isNetwork = err instanceof TypeError || isTimeout;
+      const canRetry = isNetwork && attempt < NETWORK_RETRIES;
+
+      if (canRetry) {
+        continue;
+      }
+
+      if (isTimeout) {
+        throw new Error(
+          `La API tardó demasiado en responder (${REQUEST_TIMEOUT_MS}ms). URL: ${API_BASE_URL}`,
+        );
+      }
+
+      if (err instanceof TypeError) {
+        throw new Error(
+          `No se pudo conectar con la API. Revisá EXPO_PUBLIC_API_BASE_URL (${API_BASE_URL}) y que el backend esté activo.`,
+        );
+      }
+
+      throw err as Error;
+    }
   }
-
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return (await response.json()) as T;
+  throw new Error('No se pudo completar la solicitud.');
 }
 
 export async function login(username: string, password: string): Promise<string> {
@@ -99,4 +184,8 @@ export async function stockSummary(token: string): Promise<StockSummary> {
 
 export async function dailyReport(token: string, date: string): Promise<DailyReport> {
   return request(`/reports/daily?date=${encodeURIComponent(date)}`, { method: 'GET' }, token);
+}
+
+export function getApiBaseUrl(): string {
+  return API_BASE_URL;
 }

@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { listOrders } from '../api/client';
 import { Order } from '../types';
 import { colors, spacing, typography } from '../theme/tokens';
-import { AppButton, Card, Chip } from '../ui/primitives';
+import { AppButton, Card, Chip, EmptyState, InlineMessage, LoadingBlock } from '../ui/primitives';
 
 interface Props {
   token: string;
@@ -14,19 +14,27 @@ interface Props {
 export function DriverOrdersScreen({ token, onSelectOrder, selectedOrderId }: Props): React.JSX.Element {
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loadingOrders, setLoadingOrders] = useState(true);
 
-  const refresh = async (): Promise<void> => {
+  const refresh = async (showLoader = true): Promise<void> => {
     try {
+      if (showLoader) {
+        setLoadingOrders(true);
+      }
       setError(null);
       const data = await listOrders(token);
       setOrders(data);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      if (showLoader) {
+        setLoadingOrders(false);
+      }
     }
   };
 
   useEffect(() => {
-    void refresh();
+    void refresh(true);
   }, []);
 
   return (
@@ -36,23 +44,32 @@ export function DriverOrdersScreen({ token, onSelectOrder, selectedOrderId }: Pr
           <Text style={styles.title}>Pedidos asignados</Text>
           <Text style={styles.subtitle}>Seleccioná uno para registrar entrega</Text>
         </View>
-        <AppButton title="Refrescar" tone="ghost" onPress={refresh} />
+        <AppButton title="Refrescar" tone="ghost" onPress={() => void refresh(true)} />
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <InlineMessage tone="error" text={error} /> : null}
 
-      {orders.map((order) => (
-        <Pressable key={order.id} onPress={() => onSelectOrder(order)} style={styles.pressableCard}>
-          <Card style={[styles.card, order.id === selectedOrderId ? styles.cardSelected : null]}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.address}>{order.address}</Text>
-              <Chip label={order.status} tone={order.status === 'ENTREGADO' ? 'success' : 'warning'} />
-            </View>
-            <Text style={styles.meta}>{order.scheduled_date} • {order.time_slot}</Text>
-            <Text style={styles.meta}>ID: {order.id}</Text>
-          </Card>
-        </Pressable>
-      ))}
+      {loadingOrders ? (
+        <LoadingBlock label="Cargando pedidos..." />
+      ) : orders.length === 0 ? (
+        <EmptyState
+          title="No tenés pedidos asignados"
+          description="Cuando despacho te asigne pedidos van a aparecer acá."
+        />
+      ) : (
+        orders.map((order) => (
+          <Pressable key={order.id} onPress={() => onSelectOrder(order)} style={styles.pressableCard}>
+            <Card style={[styles.card, order.id === selectedOrderId ? styles.cardSelected : null]}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.address}>{order.address}</Text>
+                <Chip label={order.status} tone={order.status === 'ENTREGADO' ? 'success' : 'warning'} />
+              </View>
+              <Text style={styles.meta}>{order.scheduled_date} • {order.time_slot}</Text>
+              <Text style={styles.meta}>ID: {order.id}</Text>
+            </Card>
+          </Pressable>
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -81,10 +98,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     marginTop: 2,
-  },
-  error: {
-    ...typography.caption,
-    color: colors.danger,
   },
   pressableCard: {
     borderRadius: 16,
