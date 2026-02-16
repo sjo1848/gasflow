@@ -1,9 +1,0 @@
-{
-  "expo": {
-    "name": "GasFlow",
-    "slug": "gasflow-mobile",
-    "version": "0.1.0",
-    "orientation": "portrait",
-    "sdkVersion": "54.0.0"
-  }
-}
