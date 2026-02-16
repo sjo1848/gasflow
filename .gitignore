@@ -1,0 +1,14 @@
+# Rust
+backend/target/
+
+# Node / Expo
+mobile/node_modules/
+mobile/.expo/
+
+# Env files
+.env
+backend/.env
+mobile/.env
+
+# OS / editor
+.DS_Store
