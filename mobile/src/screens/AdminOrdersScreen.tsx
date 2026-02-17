@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, RefreshControl, Pressable, Platform } from 'react-native';
-import { assignOrders, createOrder, listOrders } from '../api/client';
+import { useOrders, useCreateOrder, useAssignOrders } from '../hooks/queries';
 import { Order } from '../types';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
-import { AppButton, AppInput, Card, Badge, EmptyState, InlineMessage, LoadingBlock } from '../ui/primitives';
-import { Plus, UserPlus, ClipboardCheck, ListFilter, MapPin, Calendar, Clock, Info, RefreshCw } from 'lucide-react-native';
+import { AppButton, AppInput, Card, Badge, EmptyState, InlineMessage, Skeleton } from '../ui/primitives';
+import { Plus, UserPlus, ClipboardCheck, ListFilter, MapPin, Calendar, Clock, Info, RefreshCw, AlertCircle } from 'lucide-react-native';
 
 interface Props {
   token: string;
@@ -18,13 +18,12 @@ function statusTone(status: string): 'neutral' | 'success' | 'danger' | 'info' |
 }
 
 export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { data: orders, isLoading, isRefetching, refetch, error: loadError } = useOrders(token);
+  const createOrderMutation = useCreateOrder();
+  const assignOrdersMutation = useAssignOrders();
+
   const [message, setMessage] = useState<string | null>(null);
-  const [loadingOrders, setLoadingOrders] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [creatingOrder, setCreatingOrder] = useState(false);
-  const [assigningOrder, setAssigningOrder] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Form states
   const [showCreate, setShowCreate] = useState(false);
@@ -37,59 +36,32 @@ export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
   const [orderToAssign, setOrderToAssign] = useState('');
   const [driverId, setDriverId] = useState('00000000-0000-0000-0000-000000000002');
 
-  const refreshOrders = async (showLoader = true): Promise<void> => {
-    try {
-      if (showLoader) {
-        setLoadingOrders(true);
-      }
-      setError(null);
-      const data = await listOrders(token);
-      setOrders(data);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      if (showLoader) {
-        setLoadingOrders(false);
-      }
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    void refreshOrders(true);
-  }, []);
-
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    void refreshOrders(false);
-  }, []);
-
   const handleCreate = async (): Promise<void> => {
     if (!address.trim()) {
       setError('La dirección es obligatoria.');
       return;
     }
 
-    try {
-      setCreatingOrder(true);
-      setError(null);
-      setMessage(null);
-      await createOrder(token, {
+    createOrderMutation.mutate({
+      token,
+      payload: {
         address: address.trim(),
         zone,
         scheduled_date: scheduledDate,
         time_slot: timeSlot,
         quantity: Number(quantity),
-      });
-      setAddress('');
-      setMessage('Pedido creado correctamente.');
-      setShowCreate(false);
-      await refreshOrders(false);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setCreatingOrder(false);
-    }
+      }
+    }, {
+      onSuccess: () => {
+        setAddress('');
+        setMessage('Pedido creado correctamente.');
+        setShowCreate(false);
+        setError(null);
+      },
+      onError: (err) => {
+        setError(err.message);
+      }
+    });
   };
 
   const handleAssign = async (): Promise<void> => {
@@ -98,22 +70,24 @@ export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
       return;
     }
 
-    try {
-      setAssigningOrder(true);
-      setError(null);
-      setMessage(null);
-      await assignOrders(token, [orderToAssign.trim()], driverId.trim());
-      setMessage('Pedido asignado correctamente.');
-      setOrderToAssign('');
-      await refreshOrders(false);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setAssigningOrder(false);
-    }
+    assignOrdersMutation.mutate({
+      token,
+      orderIds: [orderToAssign.trim()],
+      driverId: driverId.trim()
+    }, {
+      onSuccess: () => {
+        setMessage('Pedido asignado correctamente.');
+        setOrderToAssign('');
+        setError(null);
+      },
+      onError: (err) => {
+        setError(err.message);
+      }
+    });
   };
 
   const summary = useMemo(() => {
+    if (!orders) return { total: 0, pendientes: 0, entregados: 0 };
     return {
       total: orders.length,
       pendientes: orders.filter((o) => o.status === 'PENDIENTE').length,
@@ -127,7 +101,7 @@ export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+        <RefreshControl refreshing={isRefetching} onRefresh={refetch} colors={[colors.primary]} />
       }
     >
       <View style={styles.header}>
@@ -159,7 +133,7 @@ export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
         </View>
       </View>
 
-      {error ? <InlineMessage tone="error" text={error} /> : null}
+      {(error || loadError) ? <InlineMessage tone="error" text={error || (loadError as Error).message} icon={AlertCircle} /> : null}
       {message ? <InlineMessage tone="success" text={message} /> : null}
 
       {showCreate && (
@@ -185,7 +159,13 @@ export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
               <AppInput label="Franja" value={timeSlot} onChangeText={setTimeSlot} icon={Clock} />
             </View>
           </View>
-          <AppButton title="Confirmar Pedido" onPress={handleCreate} loading={creatingOrder} style={{ marginTop: 8 }} />
+          <AppButton 
+            title="Confirmar Pedido" 
+            onPress={handleCreate} 
+            loading={createOrderMutation.isPending} 
+            haptic="success" 
+            style={{ marginTop: 8 }} 
+          />
         </Card>
       )}
 
@@ -199,7 +179,13 @@ export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
             <AppInput placeholder="ID del Pedido" value={orderToAssign} onChangeText={setOrderToAssign} />
           </View>
           <View style={{ flex: 1 }}>
-            <AppButton title="Asignar" onPress={handleAssign} loading={assigningOrder} style={styles.assignBtn} />
+            <AppButton 
+              title="Asignar" 
+              onPress={handleAssign} 
+              loading={assignOrdersMutation.isPending} 
+              haptic="medium" 
+              style={styles.assignBtn} 
+            />
           </View>
         </View>
       </Card>
@@ -209,14 +195,29 @@ export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
           <ListFilter size={18} color={colors.textStrong} />
           <Text style={styles.listTitle}>Lista de Pedidos</Text>
         </View>
-        <Pressable onPress={() => void refreshOrders(true)} style={styles.refreshIcon}>
+        <Pressable onPress={() => refetch()} style={styles.refreshIcon}>
           <RefreshCw size={16} color={colors.primary} />
         </Pressable>
       </View>
 
-      {loadingOrders && !refreshing ? (
-        <LoadingBlock label="Actualizando indicadores..." />
-      ) : orders.length === 0 ? (
+      {isLoading ? (
+        <View style={{ gap: spacing.sm }}>
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} style={styles.orderCard}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Skeleton width="70%" height={20} />
+                <Skeleton width={60} height={20} borderRadius={radii.full} />
+              </View>
+              <Skeleton width="40%" height={14} style={{ marginTop: 8 }} />
+              <View style={{ height: 1, backgroundColor: colors.borderLight, marginVertical: spacing.sm }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Skeleton width="20%" height={12} />
+                <Skeleton width="30%" height={12} />
+              </View>
+            </Card>
+          ))}
+        </View>
+      ) : !orders || orders.length === 0 ? (
         <EmptyState
           title="No hay pedidos registrados"
           description="Comenzá creando un pedido nuevo usando el botón superior."

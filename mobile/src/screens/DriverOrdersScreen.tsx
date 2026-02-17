@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, RefreshControl } from 'react-native';
-import { listOrders } from '../api/client';
+import React from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View, RefreshControl, Linking, Platform } from 'react-native';
+import { useOrders } from '../hooks/queries';
 import { Order } from '../types';
-import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
-import { AppButton, Card, Badge, EmptyState, InlineMessage, LoadingBlock } from '../ui/primitives';
-import { MapPin, Clock, Info, ChevronRight, Hash, Calendar } from 'lucide-react-native';
+import { colors, radii, spacing, typography } from '../theme/tokens';
+import { AppButton, Card, Badge, EmptyState, InlineMessage, Skeleton } from '../ui/primitives';
+import { MapPin, Clock, Info, ChevronRight, Hash, Calendar, Navigation, Truck } from 'lucide-react-native';
 
 interface Props {
   token: string;
@@ -13,44 +13,24 @@ interface Props {
 }
 
 export function DriverOrdersScreen({ token, onSelectOrder, selectedOrderId }: Props): React.JSX.Element {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loadingOrders, setLoadingOrders] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const { data: orders, isLoading, isRefetching, refetch, error } = useOrders(token);
 
-  const refresh = async (showLoader = true): Promise<void> => {
-    try {
-      if (showLoader) {
-        setLoadingOrders(true);
-      }
-      setError(null);
-      const data = await listOrders(token);
-      setOrders(data);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      if (showLoader) {
-        setLoadingOrders(false);
-      }
-      setRefreshing(false);
+  const handleNavigate = (address: string) => {
+    const url = Platform.select({
+      ios: `maps:0,0?q=${encodeURIComponent(address)}`,
+      android: `geo:0,0?q=${encodeURIComponent(address)}`,
+    });
+    if (url) {
+      void Linking.openURL(url);
     }
   };
-
-  useEffect(() => {
-    void refresh(true);
-  }, []);
-
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    void refresh(false);
-  }, []);
 
   return (
     <ScrollView 
       style={styles.container} 
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+        <RefreshControl refreshing={isRefetching} onRefresh={refetch} colors={[colors.primary]} />
       }
     >
       <View style={styles.headRow}>
@@ -60,11 +40,22 @@ export function DriverOrdersScreen({ token, onSelectOrder, selectedOrderId }: Pr
         </View>
       </View>
 
-      {error ? <InlineMessage tone="error" text={error} /> : null}
+      {error ? <InlineMessage tone="error" text={(error as Error).message} /> : null}
 
-      {loadingOrders && !refreshing ? (
-        <LoadingBlock label="Cargando pedidos..." />
-      ) : orders.length === 0 ? (
+      {isLoading ? (
+        <View style={{ gap: spacing.md }}>
+          {[1, 2, 3].map((i) => (
+            <Card key={i} style={styles.card}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Skeleton width="60%" height={24} />
+                <Skeleton width={80} height={24} borderRadius={radii.full} />
+              </View>
+              <Skeleton width="40%" height={16} style={{ marginTop: 8 }} />
+              <Skeleton width="30%" height={12} style={{ marginTop: 8 }} />
+            </Card>
+          ))}
+        </View>
+      ) : !orders || orders.length === 0 ? (
         <EmptyState
           title="No tenés pedidos asignados"
           description="Cuando despacho te asigne rutas aparecerán en esta sección."
@@ -99,6 +90,22 @@ export function DriverOrdersScreen({ token, onSelectOrder, selectedOrderId }: Pr
                     <Clock size={14} color={colors.textMuted} />
                     <Text style={styles.metaText}>{order.time_slot}</Text>
                   </View>
+                </View>
+
+                <View style={styles.cardActions}>
+                  <AppButton 
+                    title="Navegar" 
+                    tone="outline" 
+                    icon={Navigation} 
+                    onPress={() => handleNavigate(order.address)}
+                    style={styles.actionBtn}
+                  />
+                  <AppButton 
+                    title="Registrar" 
+                    tone="primary" 
+                    onPress={() => onSelectOrder(order)}
+                    style={styles.actionBtn}
+                  />
                 </View>
 
                 {order.notes ? (
@@ -194,6 +201,15 @@ const styles = StyleSheet.create({
   metaText: {
     ...typography.caption,
     color: colors.textBase,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  actionBtn: {
+    flex: 1,
+    minHeight: 40,
   },
   notesBox: {
     flexDirection: 'row',

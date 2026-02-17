@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   Text,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 import { LucideIcon } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 
 type ButtonTone = 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline';
 
@@ -23,6 +25,7 @@ interface AppButtonProps {
   tone?: ButtonTone;
   icon?: LucideIcon;
   style?: ViewStyle;
+  haptic?: Haptics.ImpactFeedbackStyle | 'success' | 'warning' | 'error';
 }
 
 export function AppButton({
@@ -33,7 +36,21 @@ export function AppButton({
   tone = 'primary',
   icon: Icon,
   style,
+  haptic = Haptics.ImpactFeedbackStyle.Light,
 }: AppButtonProps): React.JSX.Element {
+  const handlePress = () => {
+    if (haptic === 'success') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else if (haptic === 'warning') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    } else if (haptic === 'error') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } else {
+      void Haptics.impactAsync(haptic as Haptics.ImpactFeedbackStyle);
+    }
+    onPress();
+  };
+
   const getStyles = () => {
     switch (tone) {
       case 'primary': return styles.btnPrimary;
@@ -63,7 +80,7 @@ export function AppButton({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.btnBase,
@@ -82,6 +99,42 @@ export function AppButton({
         </View>
       )}
     </Pressable>
+  );
+}
+
+export function Skeleton({ width, height, borderRadius = radii.sm, style }: { width?: any, height?: any, borderRadius?: number, style?: ViewStyle }): React.JSX.Element {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.7,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.3,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [opacity]);
+
+  return (
+    <Animated.View
+      style={[
+        {
+          width,
+          height,
+          borderRadius,
+          backgroundColor: colors.border,
+          opacity,
+        },
+        style,
+      ]}
+    />
   );
 }
 

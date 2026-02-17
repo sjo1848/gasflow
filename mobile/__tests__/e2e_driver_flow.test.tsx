@@ -73,7 +73,8 @@ describe('E2E: Driver Flow', () => {
 
     // 5. Verify Driver Dashboard & Order List
     await waitFor(() => {
-      expect(screen.getByText('driver • Repartidor')).toBeTruthy();
+      expect(screen.getByText('GasFlow Reparto')).toBeTruthy();
+      expect(screen.getByText('driver')).toBeTruthy();
       expect(screen.getByText('Calle Falsa 123')).toBeTruthy();
     });
 

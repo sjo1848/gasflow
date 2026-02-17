@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, RefreshControl } from 'react-native';
-import { createInbound, dailyReport, stockSummary } from '../api/client';
-import { DailyReport, StockSummary } from '../types';
+import { useStockSummary, useDailyReport, useCreateInbound } from '../hooks/queries';
 import { colors, radii, spacing, typography } from '../theme/tokens';
-import { AppButton, AppInput, Card, Badge, EmptyState, InlineMessage, LoadingBlock } from '../ui/primitives';
+import { AppButton, AppInput, Card, Badge, EmptyState, InlineMessage, Skeleton } from '../ui/primitives';
 import { Package, TrendingUp, Calendar, Hash, RefreshCcw, AlertCircle, BarChart3, PlusCircle } from 'lucide-react-native';
 
 interface Props {
@@ -13,41 +12,18 @@ interface Props {
 export function AdminStockScreen({ token }: Props): React.JSX.Element {
   const [date, setDate] = useState('2026-02-16');
   const [cantidad, setCantidad] = useState('10');
-  const [summary, setSummary] = useState<StockSummary | null>(null);
-  const [report, setReport] = useState<DailyReport | null>(null);
+  
+  const { data: summary, isLoading: isLoadingSummary, isRefetching: isRefetchingSummary, refetch: refetchSummary, error: summaryError } = useStockSummary(token);
+  const { data: report, isLoading: isLoadingReport, isRefetching: isRefetchingReport, refetch: refetchReport, error: reportError } = useDailyReport(token, date);
+  const createInboundMutation = useCreateInbound();
+
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [savingInbound, setSavingInbound] = useState(false);
 
-  const refresh = async (showLoader = true): Promise<void> => {
-    try {
-      if (showLoader) {
-        setLoading(true);
-      }
-      setError(null);
-      const [s, r] = await Promise.all([stockSummary(token), dailyReport(token, date)]);
-      setSummary(s);
-      setReport(r);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      if (showLoader) {
-        setLoading(false);
-      }
-      setRefreshing(false);
-    }
+  const refresh = () => {
+    void refetchSummary();
+    void refetchReport();
   };
-
-  useEffect(() => {
-    void refresh(true);
-  }, []);
-
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    void refresh(false);
-  }, []);
 
   const handleInbound = async (): Promise<void> => {
     if (!Number.isFinite(Number(cantidad)) || Number(cantidad) <= 0) {
@@ -55,22 +31,25 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
       return;
     }
 
-    try {
-      setSavingInbound(true);
-      setError(null);
-      setMessage(null);
-      await createInbound(token, {
+    createInboundMutation.mutate({
+      token,
+      payload: {
         date,
         cantidad_llenas: Number(cantidad),
-      });
-      setMessage('Ingreso registrado y resumen actualizado.');
-      await refresh(false);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSavingInbound(false);
-    }
+      }
+    }, {
+      onSuccess: () => {
+        setMessage('Ingreso registrado y resumen actualizado.');
+        setError(null);
+      },
+      onError: (err) => {
+        setError(err.message);
+      }
+    });
   };
+
+  const isLoading = isLoadingSummary || isLoadingReport;
+  const isRefetching = isRefetchingSummary || isRefetchingReport;
 
   return (
     <ScrollView
@@ -78,7 +57,7 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+        <RefreshControl refreshing={isRefetching} onRefresh={refresh} colors={[colors.primary]} />
       }
     >
       <View style={styles.header}>
@@ -88,7 +67,13 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
         </View>
       </View>
 
-      {error ? <InlineMessage tone="error" text={error} icon={AlertCircle} /> : null}
+      {(error || summaryError || reportError) ? (
+        <InlineMessage 
+          tone="error" 
+          text={error || (summaryError as Error)?.message || (reportError as Error)?.message} 
+          icon={AlertCircle} 
+        />
+      ) : null}
       {message ? <InlineMessage tone="success" text={message} icon={PlusCircle} /> : null}
 
       <Card style={styles.formCard}>
@@ -105,13 +90,38 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
           </View>
         </View>
         <View style={styles.actionsRow}>
-          <AppButton title="Registrar" onPress={handleInbound} loading={savingInbound} style={{ flex: 1 }} />
-          <AppButton title="Refrescar" tone="ghost" icon={RefreshCcw} onPress={() => void refresh(true)} />
+          <AppButton title="Registrar" onPress={handleInbound} loading={createInboundMutation.isPending} style={{ flex: 1 }} />
+          <AppButton title="Refrescar" tone="ghost" icon={RefreshCcw} onPress={refresh} />
         </View>
       </Card>
 
-      {loading && !refreshing ? (
-        <LoadingBlock label="Actualizando indicadores..." />
+      {isLoading && !isRefetching ? (
+        <View style={styles.summaryContainer}>
+          <Skeleton width={120} height={16} style={{ marginBottom: 8 }} />
+          <View style={styles.mainStatsRow}>
+            <Card style={[styles.statCard, { flex: 1 }]}>
+              <Skeleton width="60%" height={12} />
+              <Skeleton width="40%" height={32} style={{ marginVertical: 8 }} />
+              <Skeleton width="50%" height={10} />
+            </Card>
+            <Card style={[styles.statCard, { flex: 1 }]}>
+              <Skeleton width="60%" height={12} />
+              <Skeleton width="40%" height={32} style={{ marginVertical: 8 }} />
+              <Skeleton width="50%" height={10} />
+            </Card>
+          </View>
+          <Card style={styles.gridCard}>
+            <Skeleton width={100} height={12} style={{ marginBottom: 16 }} />
+            <View style={styles.grid}>
+              {[1, 2, 3, 4].map((i) => (
+                <View key={i} style={[styles.statTile, { backgroundColor: 'transparent' }]}>
+                  <Skeleton width="70%" height={10} />
+                  <Skeleton width="40%" height={18} style={{ marginTop: 4 }} />
+                </View>
+              ))}
+            </View>
+          </Card>
+        </View>
       ) : summary ? (
         <View style={styles.summaryContainer}>
           <View style={styles.sectionHeader}>
@@ -198,7 +208,7 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
         </Card>
       ) : null}
 
-      {!loading && !summary && !report ? (
+      {!isLoading && !summary && !report ? (
         <EmptyState
           title="Sin datos operativos todavía"
           description="Registrá un ingreso o refrescá para consultar el resumen."

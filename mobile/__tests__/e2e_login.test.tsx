@@ -69,10 +69,10 @@ describe('E2E: Login Flow', () => {
     const adminModeBtn = screen.getByText('Panel Admin');
     fireEvent.press(adminModeBtn);
 
-    // 6. Verify Dashboard (Header shows "GasFlow")
+    // 6. Verify Dashboard (Header shows "GasFlow Admin")
     await waitFor(() => {
-      expect(screen.getByText('GasFlow')).toBeTruthy();
-      expect(screen.getByText('admin • Admin')).toBeTruthy();
+      expect(screen.getByText('GasFlow Admin')).toBeTruthy();
+      expect(screen.getByText('admin')).toBeTruthy();
     });
   });
 });

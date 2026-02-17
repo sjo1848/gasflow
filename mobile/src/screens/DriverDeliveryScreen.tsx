@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { registerDelivery, registerFailedDelivery } from '../api/client';
+import { useRegisterDelivery, useRegisterFailedDelivery } from '../hooks/queries';
 import { Order } from '../types';
 import { useDeliveryStore } from '../store/deliveryStore';
 import { colors, radii, spacing, typography } from '../theme/tokens';
@@ -16,16 +16,17 @@ interface Props {
 export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props): React.JSX.Element {
   const addToQueue = useDeliveryStore((state) => state.addToQueue);
   const queue = useDeliveryStore((state) => state.queue);
+  const registerDeliveryMutation = useRegisterDelivery();
+  const registerFailedDeliveryMutation = useRegisterFailedDelivery();
+
   const [llenas, setLlenas] = useState('1');
   const [vacias, setVacias] = useState('0');
   const [notes, setNotes] = useState('');
   const [reason, setReason] = useState('cliente ausente');
   const [reprogramDate, setReprogramDate] = useState('2026-02-20');
-  const [reprogramSlot, setReprogramSlot] = useState('MANANA');
+  const [reprogramSlot, setReprogramSlot] = useState('MAÑANA');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [submittingDelivered, setSubmittingDelivered] = useState(false);
-  const [submittingFailed, setSubmittingFailed] = useState(false);
 
   const isNetworkError = (msg: string) => 
     msg.includes('No se pudo conectar') || msg.includes('tardó demasiado');
@@ -50,24 +51,23 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
       notes: notes.trim() || undefined,
     };
 
-    try {
-      setSubmittingDelivered(true);
-      setError(null);
-      setMessage(null);
-      await registerDelivery(token, payload);
-      setMessage('Entrega registrada correctamente.');
-      await onSuccess();
-    } catch (err: any) {
-      if (isNetworkError(err.message)) {
-        addToQueue({ type: 'SUCCESS', token, payload });
-        setMessage('Sin conexión. La entrega se guardó localmente y se sincronizará luego.');
+    registerDeliveryMutation.mutate({ token, payload }, {
+      onSuccess: async () => {
+        setMessage('Entrega registrada correctamente.');
+        setError(null);
         await onSuccess();
-      } else {
-        setError(err.message);
+      },
+      onError: async (err: any) => {
+        if (isNetworkError(err.message)) {
+          addToQueue({ type: 'SUCCESS', token, payload });
+          setMessage('Sin conexión. La entrega se guardó localmente y se sincronizará luego.');
+          setError(null);
+          await onSuccess();
+        } else {
+          setError(err.message);
+        }
       }
-    } finally {
-      setSubmittingDelivered(false);
-    }
+    });
   };
 
   const handleFailed = async (): Promise<void> => {
@@ -85,24 +85,23 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
       reprogram_time_slot: reprogramSlot,
     };
 
-    try {
-      setSubmittingFailed(true);
-      setError(null);
-      setMessage(null);
-      await registerFailedDelivery(token, payload);
-      setMessage('Entrega fallida registrada.');
-      await onSuccess();
-    } catch (err: any) {
-      if (isNetworkError(err.message)) {
-        addToQueue({ type: 'FAILED', token, payload });
-        setMessage('Sin conexión. El fallo se guardó localmente y se sincronizará luego.');
+    registerFailedDeliveryMutation.mutate({ token, payload }, {
+      onSuccess: async () => {
+        setMessage('Entrega fallida registrada.');
+        setError(null);
         await onSuccess();
-      } else {
-        setError(err.message);
+      },
+      onError: async (err: any) => {
+        if (isNetworkError(err.message)) {
+          addToQueue({ type: 'FAILED', token, payload });
+          setMessage('Sin conexión. El fallo se guardó localmente y se sincronizará luego.');
+          setError(null);
+          await onSuccess();
+        } else {
+          setError(err.message);
+        }
       }
-    } finally {
-      setSubmittingFailed(false);
-    }
+    });
   };
 
   const pendingCount = queue.filter(q => q.token === token).length;
@@ -182,9 +181,10 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
             <AppButton
               title="Confirmar Entrega"
               onPress={handleDelivered}
-              loading={submittingDelivered}
-              disabled={submittingFailed}
+              loading={registerDeliveryMutation.isPending}
+              disabled={registerFailedDeliveryMutation.isPending}
               icon={CheckCircle2}
+              haptic="success"
             />
           </Card>
 
@@ -211,9 +211,10 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
               title="Registrar Fallo"
               tone="outline"
               onPress={handleFailed}
-              loading={submittingFailed}
-              disabled={submittingDelivered}
+              loading={registerFailedDeliveryMutation.isPending}
+              disabled={registerDeliveryMutation.isPending}
               icon={XCircle}
+              haptic="warning"
               style={{ borderColor: colors.danger }}
             />
           </Card>

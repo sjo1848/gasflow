@@ -80,6 +80,7 @@ export function LoginScreen(): React.JSX.Element {
             onPress={handleLogin} 
             loading={loading} 
             icon={LogIn}
+            haptic="success"
             style={{ marginTop: spacing.sm }}
           />
 
