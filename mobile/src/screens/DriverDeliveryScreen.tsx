@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRegisterDelivery, useRegisterFailedDelivery } from '../hooks/queries';
+import { useAuthStore } from '../store/authStore';
 import { Order } from '../types';
 import { useDeliveryStore } from '../store/deliveryStore';
 import { colors, radii, spacing, typography } from '../theme/tokens';
@@ -8,12 +9,12 @@ import { AppButton, AppInput, Card, Badge, EmptyState, InlineMessage } from '../
 import { CheckCircle2, XCircle, Info, MapPin, PackageCheck, AlertTriangle } from 'lucide-react-native';
 
 interface Props {
-  token: string;
   selectedOrder: Order | null;
   onSuccess: () => Promise<void>;
 }
 
-export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props): React.JSX.Element {
+export function DriverDeliveryScreen({ selectedOrder, onSuccess }: Props): React.JSX.Element {
+  const token = useAuthStore((state) => state.token);
   const addToQueue = useDeliveryStore((state) => state.addToQueue);
   const queue = useDeliveryStore((state) => state.queue);
   const registerDeliveryMutation = useRegisterDelivery();
@@ -32,7 +33,7 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
     msg.includes('No se pudo conectar') || msg.includes('tardó demasiado');
 
   const handleDelivered = async (): Promise<void> => {
-    if (!selectedOrder) return;
+    if (!selectedOrder || !token) return;
 
     if (!Number.isFinite(Number(llenas)) || Number(llenas) < 0) {
       setError('Llenas entregadas debe ser un número mayor o igual a cero.');
@@ -71,7 +72,7 @@ export function DriverDeliveryScreen({ token, selectedOrder, onSuccess }: Props)
   };
 
   const handleFailed = async (): Promise<void> => {
-    if (!selectedOrder) return;
+    if (!selectedOrder || !token) return;
 
     if (!reason.trim()) {
       setError('El motivo es obligatorio para registrar entrega fallida.');

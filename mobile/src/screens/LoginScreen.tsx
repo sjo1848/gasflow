@@ -69,7 +69,7 @@ export function LoginScreen(): React.JSX.Element {
             placeholder="••••••••"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
+            secureTextEntry={true}
             icon={Lock}
           />
 

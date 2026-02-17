@@ -1,24 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, RefreshControl, Pressable, Platform } from 'react-native';
 import { useOrders, useCreateOrder, useAssignOrders } from '../hooks/queries';
+import { useAuthStore } from '../store/authStore';
 import { Order } from '../types';
 import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 import { AppButton, AppInput, Card, Badge, EmptyState, InlineMessage, Skeleton } from '../ui/primitives';
 import { Plus, UserPlus, ClipboardCheck, ListFilter, MapPin, Calendar, Clock, Info, RefreshCw, AlertCircle } from 'lucide-react-native';
 
-interface Props {
-  token: string;
-}
-
-function statusTone(status: string): 'neutral' | 'success' | 'danger' | 'info' | 'warning' {
-  if (status === 'ENTREGADO') return 'success';
-  if (status === 'EN_REPARTO') return 'info';
-  if (status === 'ASIGNADO') return 'warning';
-  return 'neutral';
-}
-
-export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
-  const { data: orders, isLoading, isRefetching, refetch, error: loadError } = useOrders(token);
+export function AdminOrdersScreen(): React.JSX.Element {
+  const token = useAuthStore((state) => state.token);
+  const { data: orders, isLoading, isRefetching, refetch, error: loadError } = useOrders(token || '');
   const createOrderMutation = useCreateOrder();
   const assignOrdersMutation = useAssignOrders();
 
@@ -37,7 +28,7 @@ export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
   const [driverId, setDriverId] = useState('00000000-0000-0000-0000-000000000002');
 
   const handleCreate = async (): Promise<void> => {
-    if (!address.trim()) {
+    if (!address.trim() || !token) {
       setError('La dirección es obligatoria.');
       return;
     }
@@ -65,7 +56,7 @@ export function AdminOrdersScreen({ token }: Props): React.JSX.Element {
   };
 
   const handleAssign = async (): Promise<void> => {
-    if (!orderToAssign.trim() || !driverId.trim()) {
+    if (!orderToAssign.trim() || !driverId.trim() || !token) {
       setError('ID de Pedido y ID de Repartidor son obligatorios.');
       return;
     }

@@ -144,16 +144,22 @@ interface AppInputProps extends TextInputProps {
   icon?: LucideIcon;
 }
 
-export function AppInput({ label, style, testID, icon: Icon, ...props }: AppInputProps): React.JSX.Element {
+export function AppInput({ label, style, testID, icon: Icon, multiline, secureTextEntry, ...props }: AppInputProps): React.JSX.Element {
+  // Android crash prevention: force boolean types
+  const isMultiline = !!multiline;
+  const isSecure = !!secureTextEntry;
+
   return (
     <View style={styles.inputWrap}>
       {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
-      <View style={[styles.inputContainer, props.multiline ? { height: 100, alignItems: 'flex-start', paddingTop: 10 } : null]}>
+      <View style={[styles.inputContainer, isMultiline ? { height: 100, alignItems: 'flex-start', paddingTop: 10 } : null]}>
         {Icon && <Icon size={18} color={colors.textMuted} style={{ marginRight: 10 }} />}
         <TextInput
           placeholderTextColor="#94A3B8"
           style={[styles.input, style]}
           testID={testID}
+          multiline={isMultiline}
+          secureTextEntry={isSecure}
           {...props}
         />
       </View>

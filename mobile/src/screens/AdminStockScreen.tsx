@@ -1,20 +1,18 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, RefreshControl } from 'react-native';
 import { useStockSummary, useDailyReport, useCreateInbound } from '../hooks/queries';
+import { useAuthStore } from '../store/authStore';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 import { AppButton, AppInput, Card, Badge, EmptyState, InlineMessage, Skeleton } from '../ui/primitives';
 import { Package, TrendingUp, Calendar, Hash, RefreshCcw, AlertCircle, BarChart3, PlusCircle } from 'lucide-react-native';
 
-interface Props {
-  token: string;
-}
-
-export function AdminStockScreen({ token }: Props): React.JSX.Element {
+export function AdminStockScreen(): React.JSX.Element {
+  const token = useAuthStore((state) => state.token);
   const [date, setDate] = useState('2026-02-16');
   const [cantidad, setCantidad] = useState('10');
   
-  const { data: summary, isLoading: isLoadingSummary, isRefetching: isRefetchingSummary, refetch: refetchSummary, error: summaryError } = useStockSummary(token);
-  const { data: report, isLoading: isLoadingReport, isRefetching: isRefetchingReport, refetch: refetchReport, error: reportError } = useDailyReport(token, date);
+  const { data: summary, isLoading: isLoadingSummary, isRefetching: isRefetchingSummary, refetch: refetchSummary, error: summaryError } = useStockSummary(token || '');
+  const { data: report, isLoading: isLoadingReport, isRefetching: isRefetchingReport, refetch: refetchReport, error: reportError } = useDailyReport(token || '', date);
   const createInboundMutation = useCreateInbound();
 
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +24,7 @@ export function AdminStockScreen({ token }: Props): React.JSX.Element {
   };
 
   const handleInbound = async (): Promise<void> => {
-    if (!Number.isFinite(Number(cantidad)) || Number(cantidad) <= 0) {
+    if (!Number.isFinite(Number(cantidad)) || Number(cantidad) <= 0 || !token) {
       setError('La cantidad debe ser un número mayor a cero.');
       return;
     }

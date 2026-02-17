@@ -1,19 +1,20 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, RefreshControl, Linking, Platform } from 'react-native';
 import { useOrders } from '../hooks/queries';
+import { useAuthStore } from '../store/authStore';
 import { Order } from '../types';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 import { AppButton, Card, Badge, EmptyState, InlineMessage, Skeleton } from '../ui/primitives';
 import { MapPin, Clock, Info, ChevronRight, Hash, Calendar, Navigation, Truck } from 'lucide-react-native';
 
 interface Props {
-  token: string;
   onSelectOrder: (order: Order) => void;
   selectedOrderId?: string;
 }
 
-export function DriverOrdersScreen({ token, onSelectOrder, selectedOrderId }: Props): React.JSX.Element {
-  const { data: orders, isLoading, isRefetching, refetch, error } = useOrders(token);
+export function DriverOrdersScreen({ onSelectOrder, selectedOrderId }: Props): React.JSX.Element {
+  const token = useAuthStore((state) => state.token);
+  const { data: orders, isLoading, isRefetching, refetch, error } = useOrders(token || '');
 
   const handleNavigate = (address: string) => {
     const url = Platform.select({

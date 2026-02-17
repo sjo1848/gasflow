@@ -49,7 +49,7 @@ function HeaderRight({ onLogout, onChangeMode }: { onLogout: () => void; onChang
 }
 
 function AdminNavigator() {
-  const { user, logout, setMode, token } = useAuthStore();
+  const { user, logout, setMode } = useAuthStore();
   
   return (
     <AdminTab.Navigator
@@ -64,28 +64,26 @@ function AdminNavigator() {
     >
       <AdminTab.Screen 
         name="Orders" 
+        component={AdminOrdersScreen}
         options={{ 
           title: 'Pedidos',
           tabBarIcon: ({ color, size }) => <ClipboardList color={color} size={size} /> 
         }}
-      >
-        {() => <AdminOrdersScreen token={token || ''} />}
-      </AdminTab.Screen>
+      />
       <AdminTab.Screen 
         name="Stock" 
+        component={AdminStockScreen}
         options={{ 
           title: 'Stock',
           tabBarIcon: ({ color, size }) => <Package color={color} size={size} /> 
         }}
-      >
-        {() => <AdminStockScreen token={token || ''} />}
-      </AdminTab.Screen>
+      />
     </AdminTab.Navigator>
   );
 }
 
 function DriverNavigator() {
-  const { user, logout, setMode, token } = useAuthStore();
+  const { user, logout, setMode } = useAuthStore();
 
   return (
     <DriverTab.Navigator
@@ -107,7 +105,6 @@ function DriverNavigator() {
       >
         {(props) => (
           <DriverOrdersScreen 
-            token={token || ''} 
             onSelectOrder={(order) => props.navigation.navigate('DeliveryDetail', { order })} 
           />
         )}
@@ -121,7 +118,6 @@ function DriverNavigator() {
       >
         {(props) => (
           <DriverDeliveryScreen 
-            token={token || ''} 
             selectedOrder={props.route.params?.order || null} 
             onSuccess={async () => props.navigation.navigate('AssignedOrders')}
           />
@@ -140,7 +136,7 @@ export function RootNavigator() {
         <Stack.Screen name="Login" component={LoginScreen} />
       ) : !mode ? (
         <Stack.Screen name="ModeSelect">
-          {(props) => (
+          {() => (
             <ModeSelectScreen 
               role={user.role} 
               username={user.username} 
