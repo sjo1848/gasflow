@@ -18,6 +18,52 @@ import * as Haptics from 'expo-haptics';
 const isTestEnv = typeof process !== 'undefined' && !!process.env.JEST_WORKER_ID;
 
 type ButtonTone = 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline';
+type BackdropTone = 'light' | 'intermediate' | 'dark';
+
+const backdropPalette: Record<
+  BackdropTone,
+  {
+    base: string;
+    blobA: string;
+    blobB: string;
+    blobC: string;
+    ribbon: string;
+    ribbonBorder: string;
+    blobOpacity: number;
+    ribbonOpacity: number;
+  }
+> = {
+  light: {
+    base: colors.canvas,
+    blobA: colors.primaryLight,
+    blobB: colors.secondaryLight,
+    blobC: colors.accentLight,
+    ribbon: colors.surface,
+    ribbonBorder: colors.borderLight,
+    blobOpacity: 0.55,
+    ribbonOpacity: 0.4,
+  },
+  intermediate: {
+    base: '#DCE6F3',
+    blobA: '#8CB9E3',
+    blobB: '#85D2BF',
+    blobC: '#F4C28D',
+    ribbon: '#F4F8FF',
+    ribbonBorder: '#B6CAE5',
+    blobOpacity: 0.52,
+    ribbonOpacity: 0.48,
+  },
+  dark: {
+    base: '#0D1A2B',
+    blobA: '#1E5FA3',
+    blobB: '#20856E',
+    blobC: '#BD7B35',
+    ribbon: '#132238',
+    ribbonBorder: '#2D4261',
+    blobOpacity: 0.42,
+    ribbonOpacity: 0.5,
+  },
+};
 
 interface AppButtonProps {
   title: string;
@@ -284,14 +330,25 @@ export const Chip = ({ label, tone }: { label: string; tone?: BadgeProps['tone']
   <Badge label={label} tone={tone} />
 );
 
-export function ScreenBackdrop(): React.JSX.Element {
+export function ScreenBackdrop({ tone = 'light' }: { tone?: BackdropTone }): React.JSX.Element {
+  const palette = backdropPalette[tone];
+
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <View style={styles.backdropBase} />
-      <View style={styles.blobA} />
-      <View style={styles.blobB} />
-      <View style={styles.blobC} />
-      <View style={styles.ribbon} />
+      <View style={[styles.backdropBase, { backgroundColor: palette.base }]} />
+      <View style={[styles.blobA, { backgroundColor: palette.blobA, opacity: palette.blobOpacity }]} />
+      <View style={[styles.blobB, { backgroundColor: palette.blobB, opacity: palette.blobOpacity }]} />
+      <View style={[styles.blobC, { backgroundColor: palette.blobC, opacity: palette.blobOpacity + 0.08 }]} />
+      <View
+        style={[
+          styles.ribbon,
+          {
+            backgroundColor: palette.ribbon,
+            borderColor: palette.ribbonBorder,
+            opacity: palette.ribbonOpacity,
+          },
+        ]}
+      />
     </View>
   );
 }
@@ -542,8 +599,6 @@ const styles = StyleSheet.create({
     width: 290,
     height: 290,
     borderRadius: 145,
-    backgroundColor: colors.primaryLight,
-    opacity: 0.55,
   },
   blobB: {
     position: 'absolute',
@@ -552,8 +607,6 @@ const styles = StyleSheet.create({
     width: 270,
     height: 270,
     borderRadius: 135,
-    backgroundColor: colors.secondaryLight,
-    opacity: 0.55,
   },
   blobC: {
     position: 'absolute',
@@ -562,8 +615,6 @@ const styles = StyleSheet.create({
     width: 320,
     height: 320,
     borderRadius: 160,
-    backgroundColor: colors.accentLight,
-    opacity: 0.7,
   },
   ribbon: {
     position: 'absolute',
@@ -572,10 +623,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 54,
     borderRadius: 16,
-    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    opacity: 0.4,
     transform: [{ rotate: '-14deg' }],
   },
 

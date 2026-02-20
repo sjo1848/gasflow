@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -24,6 +24,26 @@ const queryClient = new QueryClient({
 export default function App(): React.JSX.Element {
   useSyncQueue();
   const { status, bootstrap } = useAuthStore();
+  const colorScheme = useColorScheme();
+  const isDarkScheme = colorScheme === 'dark';
+  const loaderTone = isDarkScheme ? 'dark' : 'intermediate';
+  const loaderPalette = isDarkScheme
+    ? {
+        cardBg: '#132238',
+        cardBorder: '#2D4261',
+        title: '#E9F2FF',
+        text: '#A9BED8',
+        spinner: '#72B6FF',
+        statusBar: 'light-content' as const,
+      }
+    : {
+        cardBg: '#F4F8FF',
+        cardBorder: '#B6CAE5',
+        title: '#10233B',
+        text: '#445A76',
+        spinner: colors.primary,
+        statusBar: 'dark-content' as const,
+      };
 
   useEffect(() => {
     void bootstrap();
@@ -32,12 +52,12 @@ export default function App(): React.JSX.Element {
   if (status === 'loading' || status === 'idle') {
     return (
       <SafeAreaView style={styles.loaderWrap}>
-        <StatusBar barStyle="dark-content" />
-        <ScreenBackdrop />
-        <View style={styles.loaderCard}>
-          <ActivityIndicator color={colors.primary} size="large" />
-          <Text style={styles.loaderTitle}>GasFlow</Text>
-          <Text style={styles.loaderText}>Cargando sesión...</Text>
+        <StatusBar barStyle={loaderPalette.statusBar} />
+        <ScreenBackdrop tone={loaderTone} />
+        <View style={[styles.loaderCard, { backgroundColor: loaderPalette.cardBg, borderColor: loaderPalette.cardBorder }]}>
+          <ActivityIndicator color={loaderPalette.spinner} size="large" />
+          <Text style={[styles.loaderTitle, { color: loaderPalette.title }]}>GasFlow</Text>
+          <Text style={[styles.loaderText, { color: loaderPalette.text }]}>Cargando sesión...</Text>
         </View>
       </SafeAreaView>
     );
