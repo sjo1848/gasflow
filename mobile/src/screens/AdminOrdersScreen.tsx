@@ -1,11 +1,40 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, RefreshControl, Pressable, Platform } from 'react-native';
-import { useOrders, useCreateOrder, useAssignOrders } from '../hooks/queries';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useAssignOrders, useCreateOrder, useOrders } from '../hooks/queries';
 import { useAuthStore } from '../store/authStore';
-import { Order } from '../types';
-import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
-import { AppButton, AppInput, Card, Badge, EmptyState, InlineMessage, Skeleton } from '../ui/primitives';
-import { Plus, UserPlus, ClipboardCheck, ListFilter, MapPin, Calendar, Clock, Info, RefreshCw, AlertCircle } from 'lucide-react-native';
+import { Order, OrderStatus } from '../types';
+import { colors, layout, radii, spacing, typography } from '../theme/tokens';
+import { AppButton, AppInput, Badge, Card, EmptyState, InlineMessage, Skeleton } from '../ui/primitives';
+import {
+  AlertCircle,
+  Calendar,
+  ChevronDown,
+  ClipboardCheck,
+  Clock,
+  ListFilter,
+  MapPin,
+  Plus,
+  RefreshCw,
+  UserPlus,
+} from 'lucide-react-native';
+import { todayIsoDate } from '../utils/date';
+
+type ListFilterType = 'TODOS' | OrderStatus;
+
+function statusTone(status: OrderStatus): 'neutral' | 'success' | 'danger' | 'info' | 'warning' {
+  switch (status) {
+    case 'ENTREGADO':
+      return 'success';
+    case 'EN_REPARTO':
+      return 'info';
+    case 'ASIGNADO':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+const driverIdSeed = '00000000-0000-0000-0000-000000000002';
 
 export function AdminOrdersScreen(): React.JSX.Element {
   const token = useAuthStore((state) => state.token);
@@ -15,231 +44,298 @@ export function AdminOrdersScreen(): React.JSX.Element {
 
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
-  // Form states
   const [showCreate, setShowCreate] = useState(false);
+  const [listFilter, setListFilter] = useState<ListFilterType>('TODOS');
+
   const [address, setAddress] = useState('');
   const [zone, setZone] = useState('Z1');
-  const [scheduledDate, setScheduledDate] = useState('2026-02-20');
-  const [timeSlot, setTimeSlot] = useState('MAÑANA');
+  const [scheduledDate, setScheduledDate] = useState(todayIsoDate());
+  const [timeSlot, setTimeSlot] = useState('MANANA');
   const [quantity, setQuantity] = useState('1');
-  
+  const [notes, setNotes] = useState('');
+
   const [orderToAssign, setOrderToAssign] = useState('');
-  const [driverId, setDriverId] = useState('00000000-0000-0000-0000-000000000002');
+  const [driverId, setDriverId] = useState(driverIdSeed);
 
-  const handleCreate = async (): Promise<void> => {
-    if (!address.trim() || !token) {
-      setError('La dirección es obligatoria.');
-      return;
-    }
-
-    createOrderMutation.mutate({
-      token,
-      payload: {
-        address: address.trim(),
-        zone,
-        scheduled_date: scheduledDate,
-        time_slot: timeSlot,
-        quantity: Number(quantity),
-      }
-    }, {
-      onSuccess: () => {
-        setAddress('');
-        setMessage('Pedido creado correctamente.');
-        setShowCreate(false);
-        setError(null);
-      },
-      onError: (err) => {
-        setError(err.message);
-      }
-    });
+  const clearFeedback = () => {
+    setMessage(null);
+    setError(null);
   };
 
-  const handleAssign = async (): Promise<void> => {
-    if (!orderToAssign.trim() || !driverId.trim() || !token) {
-      setError('ID de Pedido y ID de Repartidor son obligatorios.');
+  const handleCreate = (): void => {
+    clearFeedback();
+
+    if (!address.trim() || !token) {
+      setError('La direccion es obligatoria.');
       return;
     }
 
-    assignOrdersMutation.mutate({
-      token,
-      orderIds: [orderToAssign.trim()],
-      driverId: driverId.trim()
-    }, {
-      onSuccess: () => {
-        setMessage('Pedido asignado correctamente.');
-        setOrderToAssign('');
-        setError(null);
+    const parsedQuantity = Number(quantity);
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      setError('La cantidad debe ser mayor a cero.');
+      return;
+    }
+
+    createOrderMutation.mutate(
+      {
+        token,
+        payload: {
+          address: address.trim(),
+          zone: zone.trim() || 'Z1',
+          scheduled_date: scheduledDate,
+          time_slot: timeSlot.trim() || 'MANANA',
+          quantity: parsedQuantity,
+          notes: notes.trim() || undefined,
+        },
       },
-      onError: (err) => {
-        setError(err.message);
-      }
-    });
+      {
+        onSuccess: () => {
+          setAddress('');
+          setNotes('');
+          setQuantity('1');
+          setShowCreate(false);
+          setMessage('Pedido creado correctamente.');
+        },
+        onError: (err) => {
+          setError((err as Error).message);
+        },
+      },
+    );
+  };
+
+  const handleAssign = (): void => {
+    clearFeedback();
+
+    if (!orderToAssign.trim() || !driverId.trim() || !token) {
+      setError('ID de pedido e ID de repartidor son obligatorios.');
+      return;
+    }
+
+    assignOrdersMutation.mutate(
+      {
+        token,
+        orderIds: [orderToAssign.trim()],
+        driverId: driverId.trim(),
+      },
+      {
+        onSuccess: () => {
+          setOrderToAssign('');
+          setMessage('Pedido asignado correctamente.');
+        },
+        onError: (err) => {
+          setError((err as Error).message);
+        },
+      },
+    );
   };
 
   const summary = useMemo(() => {
-    if (!orders) return { total: 0, pendientes: 0, entregados: 0 };
+    if (!orders) return { total: 0, pendientes: 0, asignados: 0, entregados: 0 };
+
     return {
       total: orders.length,
-      pendientes: orders.filter((o) => o.status === 'PENDIENTE').length,
-      entregados: orders.filter((o) => o.status === 'ENTREGADO').length,
+      pendientes: orders.filter((order) => order.status === 'PENDIENTE').length,
+      asignados: orders.filter((order) => order.status === 'ASIGNADO' || order.status === 'EN_REPARTO').length,
+      entregados: orders.filter((order) => order.status === 'ENTREGADO').length,
     };
   }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    const list = [...(orders || [])];
+
+    const filtered = listFilter === 'TODOS' ? list : list.filter((order) => order.status === listFilter);
+
+    return filtered.sort((a, b) => {
+      if (a.scheduled_date === b.scheduled_date) return a.address.localeCompare(b.address);
+      return a.scheduled_date.localeCompare(b.scheduled_date);
+    });
+  }, [listFilter, orders]);
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={refetch} colors={[colors.primary]} />
-      }
+      refreshControl={<RefreshControl refreshing={!!isRefetching} onRefresh={refetch} colors={[colors.primary]} />}
     >
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Gestión de Pedidos</Text>
-          <Text style={styles.subtitle}>Control operativo del día</Text>
+      <View style={styles.contentInner}>
+        <View style={styles.header}>
+          <View style={styles.headerMain}>
+            <Text style={styles.title}>Gestion de Pedidos</Text>
+            <Text style={styles.subtitle}>Operacion diaria y asignacion de rutas</Text>
+          </View>
+          <AppButton
+            title={showCreate ? 'Ocultar' : 'Nuevo'}
+            tone={showCreate ? 'outline' : 'primary'}
+            icon={showCreate ? ChevronDown : Plus}
+            onPress={() => {
+              clearFeedback();
+              setShowCreate((current) => !current);
+            }}
+            style={styles.headerBtn}
+          />
         </View>
-        <AppButton 
-          title={showCreate ? "Cerrar" : "Nuevo"} 
-          tone={showCreate ? "outline" : "primary"}
-          icon={showCreate ? Info : Plus}
-          onPress={() => setShowCreate(!showCreate)}
-          style={styles.headerBtn}
-        />
-      </View>
 
-      <View style={styles.metricsRow}>
-        <View style={[styles.metricBox, { backgroundColor: colors.surfaceHighlight }]}>
-          <Text style={styles.metricValue}>{summary.total}</Text>
-          <Text style={styles.metricLabel}>Total</Text>
+        <View style={styles.metricsRow}>
+          <View style={[styles.metricBox, { backgroundColor: colors.surfaceHighlight }]}> 
+            <Text style={styles.metricValue}>{summary.total}</Text>
+            <Text style={styles.metricLabel}>Total</Text>
+          </View>
+          <View style={[styles.metricBox, { backgroundColor: colors.warningLight }]}> 
+            <Text style={[styles.metricValue, { color: colors.warning }]}>{summary.pendientes}</Text>
+            <Text style={styles.metricLabel}>Pendientes</Text>
+          </View>
+          <View style={[styles.metricBox, { backgroundColor: colors.infoLight }]}> 
+            <Text style={[styles.metricValue, { color: colors.info }]}>{summary.asignados}</Text>
+            <Text style={styles.metricLabel}>Asignados</Text>
+          </View>
+          <View style={[styles.metricBox, { backgroundColor: colors.successLight }]}> 
+            <Text style={[styles.metricValue, { color: colors.success }]}>{summary.entregados}</Text>
+            <Text style={styles.metricLabel}>Entregados</Text>
+          </View>
         </View>
-        <View style={[styles.metricBox, { backgroundColor: colors.warningLight }]}>
-          <Text style={[styles.metricValue, { color: colors.warning }]}>{summary.pendientes}</Text>
-          <Text style={styles.metricLabel}>Pend.</Text>
-        </View>
-        <View style={[styles.metricBox, { backgroundColor: colors.successLight }]}>
-          <Text style={[styles.metricValue, { color: colors.success }]}>{summary.entregados}</Text>
-          <Text style={styles.metricLabel}>Entreg.</Text>
-        </View>
-      </View>
 
-      {(error || loadError) ? <InlineMessage tone="error" text={error || (loadError as Error).message} icon={AlertCircle} /> : null}
-      {message ? <InlineMessage tone="success" text={message} /> : null}
+        {error || loadError ? (
+          <InlineMessage tone="error" text={error || (loadError as Error).message} icon={AlertCircle} />
+        ) : null}
+        {message ? <InlineMessage tone="success" text={message} /> : null}
 
-      {showCreate && (
+        {showCreate ? (
+          <Card style={styles.formCard}>
+            <View style={styles.sectionHeader}>
+              <Plus size={17} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Crear pedido</Text>
+            </View>
+
+            <AppInput
+              label="Direccion"
+              placeholder="Av. Siempre Viva 742"
+              value={address}
+              onChangeText={setAddress}
+              icon={MapPin}
+            />
+
+            <View style={styles.inputGrid}>
+              <View style={styles.gridItem}>
+                <AppInput label="Zona" value={zone} onChangeText={setZone} />
+              </View>
+              <View style={styles.gridItem}>
+                <AppInput label="Cantidad" value={quantity} onChangeText={setQuantity} keyboardType="number-pad" />
+              </View>
+            </View>
+
+            <View style={styles.inputGrid}>
+              <View style={styles.gridItem}>
+                <AppInput label="Fecha" value={scheduledDate} onChangeText={setScheduledDate} icon={Calendar} />
+              </View>
+              <View style={styles.gridItem}>
+                <AppInput label="Franja" value={timeSlot} onChangeText={setTimeSlot} icon={Clock} />
+              </View>
+            </View>
+
+            <AppInput label="Notas (opcional)" value={notes} onChangeText={setNotes} multiline />
+
+            <AppButton
+              title="Confirmar Pedido"
+              onPress={handleCreate}
+              loading={createOrderMutation.isPending}
+              haptic="success"
+              style={{ marginTop: spacing.xs }}
+            />
+          </Card>
+        ) : null}
+
         <Card style={styles.formCard}>
           <View style={styles.sectionHeader}>
-            <Plus size={18} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Crear Nuevo Pedido</Text>
+            <UserPlus size={17} color={colors.secondary} />
+            <Text style={styles.sectionTitle}>Asignacion rapida</Text>
           </View>
-          <AppInput label="Dirección de entrega" placeholder="Av. Siempre Viva 742" value={address} onChangeText={setAddress} icon={MapPin} />
-          <View style={styles.inputGrid}>
-            <View style={{ flex: 1 }}>
-              <AppInput label="Zona" value={zone} onChangeText={setZone} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppInput label="Cantidad" value={quantity} onChangeText={setQuantity} keyboardType="number-pad" />
-            </View>
-          </View>
-          <View style={styles.inputGrid}>
-            <View style={{ flex: 1 }}>
-              <AppInput label="Fecha" value={scheduledDate} onChangeText={setScheduledDate} icon={Calendar} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppInput label="Franja" value={timeSlot} onChangeText={setTimeSlot} icon={Clock} />
-            </View>
-          </View>
-          <AppButton 
-            title="Confirmar Pedido" 
-            onPress={handleCreate} 
-            loading={createOrderMutation.isPending} 
-            haptic="success" 
-            style={{ marginTop: 8 }} 
+
+          <AppInput
+            label="ID del pedido"
+            placeholder="Pegá el ID completo"
+            value={orderToAssign}
+            onChangeText={setOrderToAssign}
+          />
+          <AppInput
+            label="ID del repartidor"
+            value={driverId}
+            onChangeText={setDriverId}
+          />
+
+          <Text style={styles.hintText}>Tip dev: en local suele existir {driverIdSeed} como repartidor seed.</Text>
+
+          <AppButton
+            title="Asignar Pedido"
+            onPress={handleAssign}
+            loading={assignOrdersMutation.isPending}
+            tone="secondary"
           />
         </Card>
-      )}
 
-      <Card style={styles.formCard}>
-        <View style={styles.sectionHeader}>
-          <UserPlus size={18} color={colors.secondary} />
-          <Text style={styles.sectionTitle}>Asignación Rápida</Text>
-        </View>
-        <View style={styles.assignRow}>
-          <View style={{ flex: 1.5 }}>
-            <AppInput placeholder="ID del Pedido" value={orderToAssign} onChangeText={setOrderToAssign} />
+        <View style={styles.listHeader}>
+          <View style={styles.listHeaderMain}>
+            <ListFilter size={17} color={colors.textStrong} />
+            <Text style={styles.listTitle}>Lista de pedidos</Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <AppButton 
-              title="Asignar" 
-              onPress={handleAssign} 
-              loading={assignOrdersMutation.isPending} 
-              haptic="medium" 
-              style={styles.assignBtn} 
-            />
-          </View>
+          <Pressable onPress={() => refetch()} style={styles.refreshIcon}>
+            <RefreshCw size={16} color={colors.primary} />
+          </Pressable>
         </View>
-      </Card>
 
-      <View style={styles.listHeader}>
-        <View style={styles.listHeaderMain}>
-          <ListFilter size={18} color={colors.textStrong} />
-          <Text style={styles.listTitle}>Lista de Pedidos</Text>
-        </View>
-        <Pressable onPress={() => refetch()} style={styles.refreshIcon}>
-          <RefreshCw size={16} color={colors.primary} />
-        </Pressable>
-      </View>
-
-      {isLoading ? (
-        <View style={{ gap: spacing.sm }}>
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i} style={styles.orderCard}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Skeleton width="70%" height={20} />
-                <Skeleton width={60} height={20} borderRadius={radii.full} />
-              </View>
-              <Skeleton width="40%" height={14} style={{ marginTop: 8 }} />
-              <View style={{ height: 1, backgroundColor: colors.borderLight, marginVertical: spacing.sm }} />
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Skeleton width="20%" height={12} />
-                <Skeleton width="30%" height={12} />
-              </View>
-            </Card>
+        <View style={styles.filterRow}>
+          {(['TODOS', 'PENDIENTE', 'ASIGNADO', 'ENTREGADO'] as ListFilterType[]).map((item) => (
+            <Pressable
+              key={item}
+              onPress={() => setListFilter(item)}
+              style={[styles.filterChip, listFilter === item ? styles.filterChipActive : null]}
+            >
+              <Text style={[styles.filterChipText, listFilter === item ? styles.filterChipTextActive : null]}>{item}</Text>
+            </Pressable>
           ))}
         </View>
-      ) : !orders || orders.length === 0 ? (
-        <EmptyState
-          title="No hay pedidos registrados"
-          description="Comenzá creando un pedido nuevo usando el botón superior."
-          icon={ClipboardCheck}
-        />
-      ) : (
-        orders.map((order) => (
-          <Card key={order.id} style={styles.orderCard}>
-            <View style={styles.orderTop}>
-              <View style={styles.orderInfo}>
-                <Text style={styles.orderAddress}>{order.address}</Text>
-                <View style={styles.orderMeta}>
-                  <Text style={styles.metaText}>{order.scheduled_date} • {order.time_slot}</Text>
-                  <View style={styles.dot} />
-                  <Text style={styles.metaText}>Zona {order.zone}</Text>
+
+        {isLoading ? (
+          <View style={styles.skeletonWrap}>
+            {[1, 2, 3, 4].map((item) => (
+              <Card key={item} style={styles.orderCard}>
+                <View style={styles.skeletonTop}>
+                  <Skeleton width="68%" height={18} />
+                  <Skeleton width={70} height={20} borderRadius={radii.full} />
                 </View>
+                <Skeleton width="45%" height={13} style={{ marginTop: 8 }} />
+                <View style={styles.orderDivider} />
+                <Skeleton width="75%" height={12} />
+              </Card>
+            ))}
+          </View>
+        ) : filteredOrders.length === 0 ? (
+          <EmptyState
+            title="No hay pedidos para este filtro"
+            description="Cambia el filtro o crea un pedido nuevo para empezar la operacion."
+            icon={ClipboardCheck}
+          />
+        ) : (
+          filteredOrders.map((order) => (
+            <Card key={order.id} style={styles.orderCard}>
+              <View style={styles.orderTop}>
+                <View style={styles.orderInfo}>
+                  <Text style={styles.orderAddress}>{order.address}</Text>
+                  <Text style={styles.metaText}>{order.scheduled_date} • {order.time_slot} • Zona {order.zone}</Text>
+                </View>
+                <Badge label={order.status} tone={statusTone(order.status)} size="sm" />
               </View>
-              <Badge label={order.status} tone={statusTone(order.status)} size="sm" />
-            </View>
-            <View style={styles.orderDivider} />
-            <View style={styles.orderFooter}>
-              <Text style={styles.orderId}>ID: {order.id.split('-')[0]}...</Text>
-              <View style={styles.assigneeBox}>
-                <Text style={styles.assigneeText}>
-                  {order.assignee_id ? `👤 Repartidor: ${order.assignee_id.split('-')[0]}...` : '⚠️ Sin asignar'}
-                </Text>
-              </View>
-            </View>
-          </Card>
-        ))
-      )}
+
+              <View style={styles.orderDivider} />
+
+              <Text style={styles.orderId}>ID: {order.id}</Text>
+              <Text style={styles.assigneeText}>
+                {order.assignee_id ? `Repartidor asignado: ${order.assignee_id}` : 'Sin repartidor asignado'}
+              </Text>
+            </Card>
+          ))
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -250,15 +346,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: layout.screenBottomPadding,
+  },
+  contentInner: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
     gap: spacing.md,
-    paddingBottom: 120,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  headerMain: {
+    flex: 1,
   },
   title: {
     ...typography.h1,
@@ -270,16 +375,19 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerBtn: {
-    minHeight: 40,
+    minHeight: 42,
     paddingHorizontal: spacing.md,
   },
   metricsRow: {
     flexDirection: 'row',
-    gap: spacing.md,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   metricBox: {
-    flex: 1,
-    padding: spacing.md,
+    flexGrow: 1,
+    minWidth: '22%',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -287,8 +395,7 @@ const styles = StyleSheet.create({
     borderColor: colors.borderLight,
   },
   metricValue: {
-    ...typography.h1,
-    fontSize: 22,
+    ...typography.title,
     color: colors.textStrong,
   },
   metricLabel: {
@@ -298,14 +405,14 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   formCard: {
-    padding: spacing.lg,
-    gap: spacing.sm,
+    padding: spacing.md,
+    gap: spacing.xs,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
   },
   sectionTitle: {
     ...typography.section,
@@ -315,26 +422,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
   },
-  assignRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
+  gridItem: {
+    flex: 1,
   },
-  assignBtn: {
-    height: 52,
+  hintText: {
+    ...typography.small,
+    color: colors.textMuted,
     marginBottom: spacing.sm,
   },
   listHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
   },
   listHeaderMain: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   listTitle: {
     ...typography.section,
@@ -343,9 +448,40 @@ const styles = StyleSheet.create({
   refreshIcon: {
     padding: 8,
   },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.surface,
+  },
+  filterChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceHighlight,
+  },
+  filterChipText: {
+    ...typography.small,
+    color: colors.textBase,
+    fontWeight: '700',
+  },
+  filterChipTextActive: {
+    color: colors.primary,
+  },
+  skeletonWrap: {
+    gap: spacing.sm,
+  },
+  skeletonTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   orderCard: {
     padding: spacing.md,
-    backgroundColor: colors.surface,
   },
   orderTop: {
     flexDirection: 'row',
@@ -362,41 +498,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textStrong,
   },
-  orderMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   metaText: {
     ...typography.caption,
     color: colors.textMuted,
-  },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: colors.border,
   },
   orderDivider: {
     height: 1,
     backgroundColor: colors.borderLight,
     marginVertical: spacing.sm,
   },
-  orderFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   orderId: {
     ...typography.small,
     color: colors.textMuted,
-    fontFamily: Platform.select({ ios: 'Courier', android: 'monospace' }),
-  },
-  assigneeBox: {
-    backgroundColor: colors.surfaceSoft,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    fontFamily: 'monospace',
+    marginBottom: 2,
   },
   assigneeText: {
     ...typography.small,

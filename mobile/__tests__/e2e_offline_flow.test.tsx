@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, waitFor, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, screen } from '@testing-library/react-native';
 import App from '../App';
 import fetchMock from 'jest-fetch-mock';
 import { useDeliveryStore } from '../src/store/deliveryStore';
@@ -82,7 +82,9 @@ describe('E2E: Offline Delivery Flow', () => {
     fetchMock.mockResponse(JSON.stringify({ success: true }));
     
     // Manually trigger sync for the test (the hook uses NetInfo which is hard to trigger here)
-    await useDeliveryStore.getState().syncQueue();
+    await act(async () => {
+      await useDeliveryStore.getState().syncQueue();
+    });
 
     expect(useDeliveryStore.getState().queue.length).toBe(0);
   });

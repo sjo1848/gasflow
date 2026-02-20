@@ -2,17 +2,29 @@ import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
+  Pressable,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getApiBaseUrl } from '../api/client';
 import { useAuthStore } from '../store/authStore';
-import { colors, radii, spacing, typography, shadows } from '../theme/tokens';
+import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 import { AppButton, AppInput, Card, InlineMessage, ScreenBackdrop } from '../ui/primitives';
-import { LogIn, User, Lock, Flame } from 'lucide-react-native';
+import { Flame, Lock, LogIn, User } from 'lucide-react-native';
+
+type DemoUser = {
+  label: string;
+  username: string;
+  password: string;
+};
+
+const demoUsers: DemoUser[] = [
+  { label: 'Admin Demo', username: 'admin', password: 'admin123' },
+  { label: 'Repartidor Demo', username: 'repartidor', password: 'repartidor123' },
+];
 
 export function LoginScreen(): React.JSX.Element {
   const login = useAuthStore((state) => state.login);
@@ -24,6 +36,7 @@ export function LoginScreen(): React.JSX.Element {
   const handleLogin = async (): Promise<void> => {
     setLoading(true);
     setError(null);
+
     try {
       await login(username.trim(), password);
     } catch (err) {
@@ -32,6 +45,7 @@ export function LoginScreen(): React.JSX.Element {
       setLoading(false);
     }
   };
+
   const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
 
   return (
@@ -43,11 +57,14 @@ export function LoginScreen(): React.JSX.Element {
         style={[styles.keyboard, topInset > 0 ? { paddingTop: topInset } : null]}
       >
         <View style={styles.hero}>
+          <View style={styles.brandBadge}>
+            <Text style={styles.badgeText}>OPERACION GLP</Text>
+          </View>
           <View style={styles.iconCircle}>
-            <Flame color={colors.primary} size={40} strokeWidth={2.5} />
+            <Flame color={colors.primary} size={38} strokeWidth={2.4} />
           </View>
           <Text style={styles.brand}>GasFlow</Text>
-          <Text style={styles.tagline}>Gestión profesional de energía y logística.</Text>
+          <Text style={styles.tagline}>Despacho y reparto con foco en operación diaria.</Text>
         </View>
 
         <Card style={styles.formCard}>
@@ -69,28 +86,39 @@ export function LoginScreen(): React.JSX.Element {
             placeholder="••••••••"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry={true}
+            secureTextEntry
             icon={Lock}
           />
 
+          <View style={styles.demoRow}>
+            {demoUsers.map((item) => (
+              <Pressable
+                key={item.label}
+                onPress={() => {
+                  setUsername(item.username);
+                  setPassword(item.password);
+                }}
+                style={({ pressed }) => [styles.demoChip, pressed ? styles.demoChipPressed : null]}
+              >
+                <Text style={styles.demoText}>{item.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
           {error ? <InlineMessage tone="error" text={error} /> : null}
 
-          <AppButton 
-            title="Iniciar Sesión" 
-            onPress={handleLogin} 
-            loading={loading} 
+          <AppButton
+            title="Iniciar Sesión"
+            onPress={handleLogin}
+            loading={loading}
             icon={LogIn}
             haptic="success"
-            style={{ marginTop: spacing.sm }}
+            style={{ marginTop: spacing.xs }}
           />
 
-          <View style={styles.divider} />
-          
-          <Text style={styles.footnote}>
-            Admin: admin/admin123 {"\n"}
-            Repartidor: repartidor/repartidor123
-          </Text>
-          <View style={styles.apiBox}>
+          <View style={styles.footerInfo}>
+            <Text style={styles.footnote}>Admin: admin/admin123</Text>
+            <Text style={styles.footnote}>Repartidor: repartidor/repartidor123</Text>
             <Text style={styles.apiHint}>API: {getApiBaseUrl()}</Text>
           </View>
         </Card>
@@ -111,23 +139,39 @@ const styles = StyleSheet.create({
   },
   hero: {
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     gap: spacing.xs,
   },
+  brandBadge: {
+    backgroundColor: colors.surface,
+    borderColor: colors.borderLight,
+    borderWidth: 1,
+    borderRadius: radii.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
   iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 82,
+    height: 82,
+    borderRadius: 41,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
     ...shadows.md,
   },
   brand: {
     ...typography.display,
     color: colors.textStrong,
-    letterSpacing: -0.5,
+    letterSpacing: -0.6,
   },
   tagline: {
     ...typography.body,
@@ -137,12 +181,12 @@ const styles = StyleSheet.create({
   },
   formCard: {
     borderRadius: radii.xl,
-    gap: spacing.md,
-    padding: spacing.xl,
+    gap: spacing.sm,
+    padding: spacing.lg,
     backgroundColor: colors.surface,
   },
   header: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   formTitle: {
     ...typography.h1,
@@ -153,26 +197,45 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
   },
-  divider: {
-    height: 1,
-    backgroundColor: colors.borderLight,
-    marginVertical: spacing.xs,
+  demoRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+    flexWrap: 'wrap',
+  },
+  demoChip: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  demoChipPressed: {
+    opacity: 0.72,
+  },
+  demoText: {
+    ...typography.small,
+    color: colors.textBase,
+    fontWeight: '700',
+  },
+  footerInfo: {
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+    paddingTop: spacing.sm,
+    gap: 2,
   },
   footnote: {
     ...typography.caption,
     color: colors.textMuted,
     textAlign: 'center',
-    lineHeight: 20,
-  },
-  apiBox: {
-    backgroundColor: colors.surfaceSoft,
-    padding: 8,
-    borderRadius: 8,
-    alignSelf: 'center',
   },
   apiHint: {
     ...typography.small,
     color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xs,
     fontFamily: Platform.select({ ios: 'Courier', android: 'monospace' }),
   },
 });

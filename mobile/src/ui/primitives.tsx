@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -15,6 +15,8 @@ import { colors, radii, shadows, spacing, typography } from '../theme/tokens';
 import { LucideIcon } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
+const isTestEnv = typeof process !== 'undefined' && !!process.env.JEST_WORKER_ID;
+
 type ButtonTone = 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline';
 
 interface AppButtonProps {
@@ -28,6 +30,31 @@ interface AppButtonProps {
   haptic?: Haptics.ImpactFeedbackStyle | 'success' | 'warning' | 'error';
 }
 
+function triggerHaptic(haptic: AppButtonProps['haptic']): void {
+  if (!haptic) return;
+
+  try {
+    if (haptic === 'success') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return;
+    }
+
+    if (haptic === 'warning') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
+
+    if (haptic === 'error') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
+    void Haptics.impactAsync(haptic);
+  } catch {
+    // No bloqueamos la acción por fallas del motor háptico.
+  }
+}
+
 export function AppButton({
   title,
   onPress,
@@ -39,26 +66,24 @@ export function AppButton({
   haptic = Haptics.ImpactFeedbackStyle.Light,
 }: AppButtonProps): React.JSX.Element {
   const handlePress = () => {
-    if (haptic === 'success') {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } else if (haptic === 'warning') {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    } else if (haptic === 'error') {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } else {
-      void Haptics.impactAsync(haptic as Haptics.ImpactFeedbackStyle);
-    }
+    triggerHaptic(haptic);
     onPress();
   };
 
   const getStyles = () => {
     switch (tone) {
-      case 'primary': return styles.btnPrimary;
-      case 'secondary': return styles.btnSecondary;
-      case 'danger': return styles.btnDanger;
-      case 'ghost': return styles.btnGhost;
-      case 'outline': return styles.btnOutline;
-      default: return styles.btnPrimary;
+      case 'primary':
+        return styles.btnPrimary;
+      case 'secondary':
+        return styles.btnSecondary;
+      case 'danger':
+        return styles.btnDanger;
+      case 'ghost':
+        return styles.btnGhost;
+      case 'outline':
+        return styles.btnOutline;
+      default:
+        return styles.btnPrimary;
     }
   };
 
@@ -69,13 +94,12 @@ export function AppButton({
 
   const getSpinnerColor = () => {
     if (tone === 'ghost' || tone === 'outline') return colors.primary;
-    return '#FFFFFF';
+    return colors.textOnPrimary;
   };
 
   const getIconColor = () => {
     if (tone === 'ghost' || tone === 'outline') return colors.primary;
-    if (tone === 'danger') return '#FFFFFF';
-    return '#FFFFFF';
+    return colors.textOnPrimary;
   };
 
   return (
@@ -94,7 +118,7 @@ export function AppButton({
         <ActivityIndicator color={getSpinnerColor()} size="small" />
       ) : (
         <View style={styles.btnContent}>
-          {Icon && <Icon size={18} color={getIconColor()} strokeWidth={2.5} style={{ marginRight: 8 }} />}
+          {Icon ? <Icon size={18} color={getIconColor()} strokeWidth={2.4} style={styles.btnIcon} /> : null}
           <Text style={[getTextStyle(), disabled ? styles.btnTextDisabled : null]}>{title}</Text>
         </View>
       )}
@@ -102,24 +126,42 @@ export function AppButton({
   );
 }
 
-export function Skeleton({ width, height, borderRadius = radii.sm, style }: { width?: any, height?: any, borderRadius?: number, style?: ViewStyle }): React.JSX.Element {
-  const opacity = useRef(new Animated.Value(0.3)).current;
+export function Skeleton({
+  width,
+  height,
+  borderRadius = radii.sm,
+  style,
+}: {
+  width?: number | string;
+  height?: number;
+  borderRadius?: number;
+  style?: ViewStyle;
+}): React.JSX.Element {
+  const opacity = useRef(new Animated.Value(0.28)).current;
 
   useEffect(() => {
-    Animated.loop(
+    if (isTestEnv) {
+      opacity.setValue(0.28);
+      return;
+    }
+
+    const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, {
-          toValue: 0.7,
-          duration: 800,
+          toValue: 0.62,
+          duration: 760,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
-          toValue: 0.3,
-          duration: 800,
+          toValue: 0.28,
+          duration: 760,
           useNativeDriver: true,
         }),
-      ])
-    ).start();
+      ]),
+    );
+
+    animation.start();
+    return () => animation.stop();
   }, [opacity]);
 
   return (
@@ -144,22 +186,45 @@ interface AppInputProps extends TextInputProps {
   icon?: LucideIcon;
 }
 
-export function AppInput({ label, style, testID, icon: Icon, multiline, secureTextEntry, ...props }: AppInputProps): React.JSX.Element {
-  // Android crash prevention: force boolean types
+export function AppInput({
+  label,
+  style,
+  testID,
+  icon: Icon,
+  multiline,
+  secureTextEntry,
+  ...props
+}: AppInputProps): React.JSX.Element {
+  const [isFocused, setIsFocused] = useState(false);
   const isMultiline = !!multiline;
   const isSecure = !!secureTextEntry;
 
   return (
     <View style={styles.inputWrap}>
       {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
-      <View style={[styles.inputContainer, isMultiline ? { height: 100, alignItems: 'flex-start', paddingTop: 10 } : null]}>
-        {Icon && <Icon size={18} color={colors.textMuted} style={{ marginRight: 10 }} />}
+      <View
+        style={[
+          styles.inputContainer,
+          isFocused ? styles.inputFocused : null,
+          isMultiline ? styles.inputMultilineContainer : null,
+        ]}
+      >
+        {Icon ? <Icon size={18} color={isFocused ? colors.primary : colors.textMuted} style={styles.inputIcon} /> : null}
         <TextInput
-          placeholderTextColor="#94A3B8"
-          style={[styles.input, style]}
+          placeholderTextColor={colors.textMuted}
+          style={[styles.input, isMultiline ? styles.inputMultiline : null, style]}
           testID={testID}
           multiline={isMultiline}
           secureTextEntry={isSecure}
+          underlineColorAndroid="transparent"
+          onFocus={(event) => {
+            setIsFocused(true);
+            props.onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setIsFocused(false);
+            props.onBlur?.(event);
+          }}
           {...props}
         />
       </View>
@@ -180,39 +245,53 @@ interface BadgeProps {
 export function Badge({ label, tone = 'neutral', size = 'md' }: BadgeProps): React.JSX.Element {
   const toneStyle = () => {
     switch (tone) {
-      case 'success': return styles.badgeSuccess;
-      case 'danger': return styles.badgeDanger;
-      case 'info': return styles.badgeInfo;
-      case 'warning': return styles.badgeWarning;
-      default: return styles.badgeNeutral;
+      case 'success':
+        return styles.badgeSuccess;
+      case 'danger':
+        return styles.badgeDanger;
+      case 'info':
+        return styles.badgeInfo;
+      case 'warning':
+        return styles.badgeWarning;
+      default:
+        return styles.badgeNeutral;
     }
   };
 
   const textStyle = () => {
     switch (tone) {
-      case 'success': return { color: colors.success };
-      case 'danger': return { color: colors.danger };
-      case 'info': return { color: colors.info };
-      case 'warning': return { color: colors.warning };
-      default: return { color: colors.textBase };
+      case 'success':
+        return { color: colors.success };
+      case 'danger':
+        return { color: colors.danger };
+      case 'info':
+        return { color: colors.info };
+      case 'warning':
+        return { color: colors.warning };
+      default:
+        return { color: colors.textBase };
     }
   };
 
   return (
     <View style={[styles.badge, toneStyle(), size === 'sm' ? styles.badgeSm : null]}>
-      <Text style={[styles.badgeText, textStyle(), size === 'sm' ? { fontSize: 10 } : null]}>{label}</Text>
+      <Text style={[styles.badgeText, textStyle(), size === 'sm' ? styles.badgeTextSm : null]}>{label}</Text>
     </View>
   );
 }
 
-// Backward compatibility
-export const Chip = ({ label, tone }: { label: string, tone?: any }) => <Badge label={label} tone={tone} />;
+export const Chip = ({ label, tone }: { label: string; tone?: BadgeProps['tone'] }) => (
+  <Badge label={label} tone={tone} />
+);
 
 export function ScreenBackdrop(): React.JSX.Element {
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View style={styles.backdropBase} />
       <View style={styles.blobA} />
       <View style={styles.blobB} />
+      <View style={styles.blobC} />
+      <View style={styles.ribbon} />
     </View>
   );
 }
@@ -230,26 +309,34 @@ export function InlineMessage({
 }: InlineMessageProps): React.JSX.Element {
   const getToneStyles = () => {
     switch (tone) {
-      case 'success': return styles.msgSuccess;
-      case 'warning': return styles.msgWarning;
-      case 'error': return styles.msgError;
-      default: return styles.msgInfo;
+      case 'success':
+        return styles.msgSuccess;
+      case 'warning':
+        return styles.msgWarning;
+      case 'error':
+        return styles.msgError;
+      default:
+        return styles.msgInfo;
     }
   };
 
   const getIconColor = () => {
     switch (tone) {
-      case 'success': return colors.success;
-      case 'warning': return colors.warning;
-      case 'error': return colors.danger;
-      default: return colors.info;
+      case 'success':
+        return colors.success;
+      case 'warning':
+        return colors.warning;
+      case 'error':
+        return colors.danger;
+      default:
+        return colors.info;
     }
   };
 
   return (
     <View style={[styles.msgBase, getToneStyles()]}>
       <View style={styles.msgContent}>
-        {Icon && <Icon size={16} color={getIconColor()} style={{ marginRight: 8 }} />}
+        {Icon ? <Icon size={16} color={getIconColor()} style={styles.msgIcon} /> : null}
         <Text style={[styles.msgText, { color: getIconColor() }]}>{text}</Text>
       </View>
     </View>
@@ -265,7 +352,7 @@ interface EmptyStateProps {
 export function EmptyState({ title, description, icon: Icon }: EmptyStateProps): React.JSX.Element {
   return (
     <View style={styles.emptyWrap}>
-      {Icon && <Icon size={48} color={colors.border} style={{ marginBottom: spacing.md }} />}
+      {Icon ? <Icon size={46} color={colors.borderStrong} style={styles.emptyIcon} /> : null}
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.emptyDescription}>{description}</Text>
     </View>
@@ -287,11 +374,13 @@ export function LoadingBlock({ label = 'Cargando...' }: LoadingBlockProps): Reac
 
 const styles = StyleSheet.create({
   btnBase: {
-    minHeight: 52,
+    minHeight: 50,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'transparent',
     ...shadows.sm,
   },
   btnContent: {
@@ -299,17 +388,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  btnIcon: {
+    marginRight: spacing.xs,
+  },
   btnPrimary: {
     backgroundColor: colors.primary,
+    borderColor: colors.primaryDark,
   },
   btnSecondary: {
     backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
   },
   btnDanger: {
     backgroundColor: colors.danger,
+    borderColor: colors.danger,
   },
   btnOutline: {
-    backgroundColor: 'transparent',
+    backgroundColor: colors.surface,
     borderWidth: 1.5,
     borderColor: colors.primary,
     elevation: 0,
@@ -319,27 +414,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     elevation: 0,
     shadowOpacity: 0,
+    borderColor: 'transparent',
   },
   btnPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
+    opacity: 0.88,
+    transform: [{ scale: 0.985 }],
   },
   btnDisabled: {
     opacity: 0.5,
   },
   btnText: {
-    color: '#FFFFFF',
+    color: colors.textOnPrimary,
     ...typography.section,
-    fontSize: 16,
+    fontSize: 15,
   },
   btnTextGhost: {
     color: colors.primary,
     ...typography.section,
-    fontSize: 16,
+    fontSize: 15,
   },
   btnTextDisabled: {
-    color: '#FFFFFF',
+    color: colors.textOnPrimary,
   },
+
   inputWrap: {
     gap: spacing.xs,
     marginBottom: spacing.sm,
@@ -347,7 +444,7 @@ const styles = StyleSheet.create({
   inputLabel: {
     ...typography.caption,
     color: colors.textBase,
-    fontWeight: '600',
+    fontWeight: '700',
     marginLeft: 4,
   },
   inputContainer: {
@@ -360,33 +457,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.surface,
   },
+  inputFocused: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceRaised,
+  },
+  inputMultilineContainer: {
+    minHeight: 104,
+    alignItems: 'flex-start',
+    paddingTop: 10,
+  },
+  inputIcon: {
+    marginRight: 10,
+    marginTop: 1,
+  },
   input: {
     flex: 1,
     color: colors.textStrong,
     ...typography.body,
     fontSize: 16,
   },
+  inputMultiline: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.borderLight,
     padding: spacing.md,
-    ...shadows.md,
+    ...shadows.card,
   },
+
   badge: {
     alignSelf: 'flex-start',
     borderRadius: radii.full,
-    paddingVertical: 4,
+    paddingVertical: 5,
     paddingHorizontal: 12,
     borderWidth: 1,
   },
   badgeSm: {
-    paddingVertical: 2,
-    paddingHorizontal: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 9,
   },
   badgeNeutral: {
-    backgroundColor: colors.borderLight,
+    backgroundColor: colors.chip,
     borderColor: colors.border,
   },
   badgeSuccess: {
@@ -407,30 +523,62 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     ...typography.small,
-    fontWeight: '700',
+    fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  badgeTextSm: {
+    fontSize: 10,
+  },
+
+  backdropBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.canvas,
+  },
   blobA: {
     position: 'absolute',
-    top: -100,
-    right: -100,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
+    top: -130,
+    right: -70,
+    width: 290,
+    height: 290,
+    borderRadius: 145,
     backgroundColor: colors.primaryLight,
-    opacity: 0.3,
+    opacity: 0.55,
   },
   blobB: {
     position: 'absolute',
-    bottom: -150,
-    left: -150,
-    width: 400,
-    height: 400,
-    borderRadius: 200,
-    backgroundColor: colors.warningLight,
-    opacity: 0.3,
+    top: 170,
+    left: -140,
+    width: 270,
+    height: 270,
+    borderRadius: 135,
+    backgroundColor: colors.secondaryLight,
+    opacity: 0.55,
   },
+  blobC: {
+    position: 'absolute',
+    bottom: -170,
+    right: -90,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: colors.accentLight,
+    opacity: 0.7,
+  },
+  ribbon: {
+    position: 'absolute',
+    top: 110,
+    right: -35,
+    width: 240,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    opacity: 0.4,
+    transform: [{ rotate: '-14deg' }],
+  },
+
   msgBase: {
     borderRadius: radii.md,
     borderWidth: 1,
@@ -440,6 +588,9 @@ const styles = StyleSheet.create({
   msgContent: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  msgIcon: {
+    marginRight: spacing.sm,
   },
   msgInfo: {
     backgroundColor: colors.infoLight,
@@ -459,15 +610,22 @@ const styles = StyleSheet.create({
   },
   msgText: {
     ...typography.caption,
-    fontWeight: '600',
+    fontWeight: '700',
     flex: 1,
   },
+
   emptyWrap: {
     borderRadius: radii.lg,
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.md,
     alignItems: 'center',
     gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  emptyIcon: {
+    marginBottom: spacing.sm,
   },
   emptyTitle: {
     ...typography.section,
@@ -479,6 +637,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
+
   loadingWrap: {
     flexDirection: 'row',
     alignItems: 'center',

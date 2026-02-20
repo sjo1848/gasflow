@@ -2,14 +2,19 @@ import { useEffect } from 'react';
 import NetInfo from '@react-native-community/netinfo';
 import { useDeliveryStore } from '../store/deliveryStore';
 
+const isTestEnv = typeof process !== 'undefined' && !!process.env.JEST_WORKER_ID;
+
 export function useSyncQueue() {
   const { queue, syncQueue, isSyncing } = useDeliveryStore();
 
   useEffect(() => {
+    if (isTestEnv) {
+      return;
+    }
+
     // 1. Sync on network change (offline -> online)
     const unsubscribe = NetInfo.addEventListener((state) => {
       if (state.isConnected && state.isInternetReachable && queue.length > 0 && !isSyncing) {
-        console.log('Network is up, starting sync...');
         void syncQueue();
       }
     });

@@ -4,9 +4,10 @@ import { useRegisterDelivery, useRegisterFailedDelivery } from '../hooks/queries
 import { useAuthStore } from '../store/authStore';
 import { Order } from '../types';
 import { useDeliveryStore } from '../store/deliveryStore';
-import { colors, radii, spacing, typography } from '../theme/tokens';
-import { AppButton, AppInput, Card, Badge, EmptyState, InlineMessage } from '../ui/primitives';
-import { CheckCircle2, XCircle, Info, MapPin, PackageCheck, AlertTriangle } from 'lucide-react-native';
+import { colors, layout, radii, spacing, typography } from '../theme/tokens';
+import { AppButton, AppInput, Badge, Card, EmptyState, InlineMessage } from '../ui/primitives';
+import { AlertTriangle, CheckCircle2, MapPin, PackageCheck, XCircle } from 'lucide-react-native';
+import { tomorrowIsoDate } from '../utils/date';
 
 interface Props {
   selectedOrder: Order | null;
@@ -23,25 +24,29 @@ export function DriverDeliveryScreen({ selectedOrder, onSuccess }: Props): React
   const [llenas, setLlenas] = useState('1');
   const [vacias, setVacias] = useState('0');
   const [notes, setNotes] = useState('');
+
   const [reason, setReason] = useState('cliente ausente');
-  const [reprogramDate, setReprogramDate] = useState('2026-02-20');
-  const [reprogramSlot, setReprogramSlot] = useState('MAÑANA');
+  const [reprogramDate, setReprogramDate] = useState(tomorrowIsoDate());
+  const [reprogramSlot, setReprogramSlot] = useState('MANANA');
+
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const isNetworkError = (msg: string) => 
-    msg.includes('No se pudo conectar') || msg.includes('tardó demasiado');
+  const isNetworkError = (msg: string) => msg.includes('No se pudo conectar') || msg.includes('tardo demasiado');
 
-  const handleDelivered = async (): Promise<void> => {
+  const handleDelivered = (): void => {
     if (!selectedOrder || !token) return;
 
+    setError(null);
+    setMessage(null);
+
     if (!Number.isFinite(Number(llenas)) || Number(llenas) < 0) {
-      setError('Llenas entregadas debe ser un número mayor o igual a cero.');
+      setError('Llenas entregadas debe ser un numero mayor o igual a cero.');
       return;
     }
 
     if (!Number.isFinite(Number(vacias)) || Number(vacias) < 0) {
-      setError('Vacías recibidas debe ser un número mayor o igual a cero.');
+      setError('Vacias recibidas debe ser un numero mayor o igual a cero.');
       return;
     }
 
@@ -52,27 +57,34 @@ export function DriverDeliveryScreen({ selectedOrder, onSuccess }: Props): React
       notes: notes.trim() || undefined,
     };
 
-    registerDeliveryMutation.mutate({ token, payload }, {
-      onSuccess: async () => {
-        setMessage('Entrega registrada correctamente.');
-        setError(null);
-        await onSuccess();
-      },
-      onError: async (err: any) => {
-        if (isNetworkError(err.message)) {
-          addToQueue({ type: 'SUCCESS', token, payload });
-          setMessage('Sin conexión. La entrega se guardó localmente y se sincronizará luego.');
-          setError(null);
+    registerDeliveryMutation.mutate(
+      { token, payload },
+      {
+        onSuccess: async () => {
+          setMessage('Entrega registrada correctamente.');
           await onSuccess();
-        } else {
-          setError(err.message);
-        }
-      }
-    });
+        },
+        onError: async (err: unknown) => {
+          const errMsg = (err as Error).message;
+
+          if (isNetworkError(errMsg)) {
+            addToQueue({ type: 'SUCCESS', token, payload });
+            setMessage('Sin conexion. La entrega se guardo localmente y se sincronizara luego.');
+            await onSuccess();
+            return;
+          }
+
+          setError(errMsg);
+        },
+      },
+    );
   };
 
-  const handleFailed = async (): Promise<void> => {
+  const handleFailed = (): void => {
     if (!selectedOrder || !token) return;
+
+    setError(null);
+    setMessage(null);
 
     if (!reason.trim()) {
       setError('El motivo es obligatorio para registrar entrega fallida.');
@@ -86,141 +98,152 @@ export function DriverDeliveryScreen({ selectedOrder, onSuccess }: Props): React
       reprogram_time_slot: reprogramSlot,
     };
 
-    registerFailedDeliveryMutation.mutate({ token, payload }, {
-      onSuccess: async () => {
-        setMessage('Entrega fallida registrada.');
-        setError(null);
-        await onSuccess();
-      },
-      onError: async (err: any) => {
-        if (isNetworkError(err.message)) {
-          addToQueue({ type: 'FAILED', token, payload });
-          setMessage('Sin conexión. El fallo se guardó localmente y se sincronizará luego.');
-          setError(null);
+    registerFailedDeliveryMutation.mutate(
+      { token, payload },
+      {
+        onSuccess: async () => {
+          setMessage('Entrega fallida registrada.');
           await onSuccess();
-        } else {
-          setError(err.message);
-        }
-      }
-    });
+        },
+        onError: async (err: unknown) => {
+          const errMsg = (err as Error).message;
+
+          if (isNetworkError(errMsg)) {
+            addToQueue({ type: 'FAILED', token, payload });
+            setMessage('Sin conexion. El fallo se guardo localmente y se sincronizara luego.');
+            await onSuccess();
+            return;
+          }
+
+          setError(errMsg);
+        },
+      },
+    );
   };
 
-  const pendingCount = queue.filter(q => q.token === token).length;
+  const pendingCount = queue.filter((item) => item.token === token).length;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.title}>Registrar entrega</Text>
-          <Text style={styles.subtitle}>Completá los datos de la visita</Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <View style={styles.contentInner}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.title}>Registrar entrega</Text>
+            <Text style={styles.subtitle}>Completa los datos de la visita</Text>
+          </View>
+          {pendingCount > 0 ? <Badge label={`${pendingCount} pendiente(s)`} tone="warning" /> : null}
         </View>
-        {pendingCount > 0 && (
-          <Badge label={`${pendingCount} pendiente(s)`} tone="warning" />
+
+        {!selectedOrder ? (
+          <EmptyState
+            title="Todavia no seleccionaste un pedido"
+            description="Volve a la pestana Asignados y toca un domicilio para cargar la entrega."
+            icon={MapPin}
+          />
+        ) : (
+          <>
+            <Card style={styles.orderCard}>
+              <View style={styles.orderHeader}>
+                <View style={styles.addressLine}>
+                  <MapPin size={18} color={colors.primary} />
+                  <Text style={styles.addressText}>{selectedOrder.address}</Text>
+                </View>
+                <Badge label={selectedOrder.status} tone="info" size="sm" />
+              </View>
+              <View style={styles.orderDivider} />
+              <Text style={styles.orderId}>ID: {selectedOrder.id}</Text>
+            </Card>
+
+            {error ? <InlineMessage tone="error" text={error} icon={AlertTriangle} /> : null}
+            {message ? <InlineMessage tone="success" text={message} icon={CheckCircle2} /> : null}
+
+            <Card style={styles.card}>
+              <View style={styles.sectionHeader}>
+                <PackageCheck size={19} color={colors.success} />
+                <Text style={styles.sectionTitle}>Entrega Exitosa</Text>
+              </View>
+
+              <View style={styles.inputGrid}>
+                <View style={styles.gridItem}>
+                  <AppInput
+                    label="Llenas"
+                    value={llenas}
+                    onChangeText={setLlenas}
+                    keyboardType="number-pad"
+                    testID="input-llenas"
+                  />
+                </View>
+                <View style={styles.gridItem}>
+                  <AppInput
+                    label="Vacias"
+                    value={vacias}
+                    onChangeText={setVacias}
+                    keyboardType="number-pad"
+                    testID="input-vacias"
+                  />
+                </View>
+              </View>
+
+              <AppInput
+                label="Notas de la entrega"
+                value={notes}
+                onChangeText={setNotes}
+                testID="input-notes"
+                placeholder="Ej: Se dejo en la entrada"
+                multiline
+              />
+
+              <AppButton
+                title="Confirmar Entrega"
+                onPress={handleDelivered}
+                loading={registerDeliveryMutation.isPending}
+                disabled={registerFailedDeliveryMutation.isPending}
+                icon={CheckCircle2}
+                haptic="success"
+              />
+            </Card>
+
+            <Card style={[styles.card, styles.cardDanger]}>
+              <View style={styles.sectionHeader}>
+                <XCircle size={19} color={colors.danger} />
+                <Text style={styles.sectionTitle}>Entrega Fallida</Text>
+              </View>
+
+              <AppInput
+                label="Motivo del fallo"
+                value={reason}
+                onChangeText={setReason}
+                placeholder="Ej: Cliente ausente"
+              />
+
+              <View style={styles.inputGrid}>
+                <View style={styles.gridItem}>
+                  <AppInput
+                    label="Reprogramar"
+                    value={reprogramDate}
+                    onChangeText={setReprogramDate}
+                    placeholder="YYYY-MM-DD"
+                  />
+                </View>
+                <View style={styles.gridItem}>
+                  <AppInput label="Franja" value={reprogramSlot} onChangeText={setReprogramSlot} />
+                </View>
+              </View>
+
+              <AppButton
+                title="Registrar Fallo"
+                tone="outline"
+                onPress={handleFailed}
+                loading={registerFailedDeliveryMutation.isPending}
+                disabled={registerDeliveryMutation.isPending}
+                icon={XCircle}
+                haptic="warning"
+                style={{ borderColor: colors.danger }}
+              />
+            </Card>
+          </>
         )}
       </View>
-
-      {!selectedOrder ? (
-        <EmptyState
-          title="Todavía no seleccionaste un pedido"
-          description="Volvé a la pestaña Asignados y tocá un domicilio para cargar la entrega."
-          icon={MapPin}
-        />
-      ) : (
-        <>
-          <Card style={styles.orderCard}>
-            <View style={styles.orderHeader}>
-              <View style={styles.addressLine}>
-                <MapPin size={18} color={colors.primary} />
-                <Text style={styles.addressText}>{selectedOrder.address}</Text>
-              </View>
-              <Badge label={selectedOrder.status} tone="info" size="sm" />
-            </View>
-            <View style={styles.orderDivider} />
-            <Text style={styles.orderId}>ID: {selectedOrder.id}</Text>
-          </Card>
-
-          {error ? <InlineMessage tone="error" text={error} icon={AlertTriangle} /> : null}
-          {message ? <InlineMessage tone="success" text={message} icon={CheckCircle2} /> : null}
-
-          <Card style={styles.card}>
-            <View style={styles.sectionHeader}>
-              <PackageCheck size={20} color={colors.success} />
-              <Text style={styles.sectionTitle}>Entrega Exitosa</Text>
-            </View>
-            <View style={styles.inputGrid}>
-              <View style={{ flex: 1 }}>
-                <AppInput
-                  label="Llenas"
-                  value={llenas}
-                  onChangeText={setLlenas}
-                  keyboardType="number-pad"
-                  testID="input-llenas"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppInput
-                  label="Vacías"
-                  value={vacias}
-                  onChangeText={setVacias}
-                  keyboardType="number-pad"
-                  testID="input-vacias"
-                />
-              </View>
-            </View>
-            <AppInput 
-              label="Notas de la entrega" 
-              value={notes} 
-              onChangeText={setNotes} 
-              testID="input-notes"
-              placeholder="Ej: Se dejó en la entrada..."
-              multiline
-            />
-            <AppButton
-              title="Confirmar Entrega"
-              onPress={handleDelivered}
-              loading={registerDeliveryMutation.isPending}
-              disabled={registerFailedDeliveryMutation.isPending}
-              icon={CheckCircle2}
-              haptic="success"
-            />
-          </Card>
-
-          <Card style={[styles.card, styles.cardDanger]}>
-            <View style={styles.sectionHeader}>
-              <XCircle size={20} color={colors.danger} />
-              <Text style={styles.sectionTitle}>Entrega Fallida</Text>
-            </View>
-            <AppInput 
-              label="Motivo del fallo" 
-              value={reason} 
-              onChangeText={setReason} 
-              placeholder="Ej: Cliente ausente"
-            />
-            <View style={styles.inputGrid}>
-              <View style={{ flex: 1 }}>
-                <AppInput label="Reprogramar" value={reprogramDate} onChangeText={setReprogramDate} placeholder="YYYY-MM-DD" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppInput label="Franja" value={reprogramSlot} onChangeText={setReprogramSlot} />
-              </View>
-            </View>
-            <AppButton
-              title="Registrar Fallo"
-              tone="outline"
-              onPress={handleFailed}
-              loading={registerFailedDeliveryMutation.isPending}
-              disabled={registerDeliveryMutation.isPending}
-              icon={XCircle}
-              haptic="warning"
-              style={{ borderColor: colors.danger }}
-            />
-          </Card>
-        </>
-      )}
     </ScrollView>
   );
 }
@@ -231,9 +254,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: layout.screenBottomPadding,
+  },
+  contentInner: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
     gap: spacing.md,
-    paddingBottom: 120,
   },
   title: {
     ...typography.h1,
@@ -260,6 +289,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    gap: spacing.sm,
   },
   addressLine: {
     flexDirection: 'row',
@@ -274,25 +304,25 @@ const styles = StyleSheet.create({
   orderDivider: {
     height: 1,
     backgroundColor: colors.primaryLight,
-    opacity: 0.5,
+    opacity: 0.7,
   },
   orderId: {
     ...typography.small,
     color: colors.textMuted,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   card: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: spacing.md,
+    gap: spacing.sm,
   },
   cardDanger: {
-    borderColor: colors.dangerLight,
-    backgroundColor: colors.surfaceSoft,
+    borderColor: '#FFDAD5',
+    backgroundColor: colors.surface,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
     marginBottom: spacing.xs,
   },
   sectionTitle: {
@@ -302,5 +332,8 @@ const styles = StyleSheet.create({
   inputGrid: {
     flexDirection: 'row',
     gap: spacing.md,
+  },
+  gridItem: {
+    flex: 1,
   },
 });
