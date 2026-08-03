@@ -3,7 +3,10 @@ use axum::{
     http::{self, Request, StatusCode},
 };
 use gasflow_backend::{
-    adapters::{auth::jwt::JwtService, db::repository::PgRepository, http::router::build_router, observability::metrics::MetricsRegistry},
+    adapters::{
+        auth::jwt::JwtService, db::repository::PgRepository, http::router::build_router,
+        observability::metrics::MetricsRegistry,
+    },
     AppState,
 };
 use serde_json::{json, Value};
@@ -58,7 +61,9 @@ async fn test_login_and_me_flow() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
     let token = body["access_token"].as_str().expect("token not found");
 
@@ -77,7 +82,9 @@ async fn test_login_and_me_flow() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["username"], "admin");
     assert_eq!(body["role"], "ADMIN");
@@ -112,12 +119,16 @@ async fn test_order_lifecycle() {
                 .method(http::Method::POST)
                 .uri("/auth/login")
                 .header(http::header::CONTENT_TYPE, "application/json")
-                .body(Body::from(json!({"username": "admin", "password": "admin123"}).to_string()))
+                .body(Body::from(
+                    json!({"username": "admin", "password": "admin123"}).to_string(),
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
     let admin_token = body["access_token"].as_str().unwrap().to_string();
 
@@ -128,7 +139,10 @@ async fn test_order_lifecycle() {
             Request::builder()
                 .method(http::Method::POST)
                 .uri("/orders")
-                .header(http::header::AUTHORIZATION, format!("Bearer {}", admin_token))
+                .header(
+                    http::header::AUTHORIZATION,
+                    format!("Bearer {}", admin_token),
+                )
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
                     json!({
@@ -146,7 +160,9 @@ async fn test_order_lifecycle() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
     let order_id = body["id"].as_str().unwrap().to_string();
 
@@ -158,15 +174,19 @@ async fn test_order_lifecycle() {
                 .method(http::Method::POST)
                 .uri("/auth/login")
                 .header(http::header::CONTENT_TYPE, "application/json")
-                .body(Body::from(json!({"username": "repartidor", "password": "repartidor123"}).to_string()))
+                .body(Body::from(
+                    json!({"username": "repartidor", "password": "repartidor123"}).to_string(),
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
     let repartidor_token = body["access_token"].as_str().unwrap().to_string();
-    
+
     // Get repartidor profile to get ID
     let response = app
         .clone()
@@ -174,13 +194,18 @@ async fn test_order_lifecycle() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri("/me")
-                .header(http::header::AUTHORIZATION, format!("Bearer {}", repartidor_token))
+                .header(
+                    http::header::AUTHORIZATION,
+                    format!("Bearer {}", repartidor_token),
+                )
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
     let repartidor_id = body["id"].as_str().unwrap().to_string();
 
@@ -191,7 +216,10 @@ async fn test_order_lifecycle() {
             Request::builder()
                 .method(http::Method::POST)
                 .uri("/dispatch/assign")
-                .header(http::header::AUTHORIZATION, format!("Bearer {}", admin_token))
+                .header(
+                    http::header::AUTHORIZATION,
+                    format!("Bearer {}", admin_token),
+                )
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
                     json!({
@@ -213,7 +241,10 @@ async fn test_order_lifecycle() {
             Request::builder()
                 .method(http::Method::POST)
                 .uri("/deliveries")
-                .header(http::header::AUTHORIZATION, format!("Bearer {}", repartidor_token))
+                .header(
+                    http::header::AUTHORIZATION,
+                    format!("Bearer {}", repartidor_token),
+                )
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
                     json!({
@@ -237,15 +268,20 @@ async fn test_order_lifecycle() {
             Request::builder()
                 .method(http::Method::GET)
                 .uri(format!("/orders?date=2026-02-16"))
-                .header(http::header::AUTHORIZATION, format!("Bearer {}", admin_token))
+                .header(
+                    http::header::AUTHORIZATION,
+                    format!("Bearer {}", admin_token),
+                )
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let body: Value = serde_json::from_slice(&body).unwrap();
-    
+
     // Paged response
     let items = body["items"].as_array().unwrap();
     let order = items.iter().find(|o| o["id"] == order_id).unwrap();
