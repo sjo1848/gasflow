@@ -178,7 +178,7 @@ export function Skeleton({
   borderRadius = radii.sm,
   style,
 }: {
-  width?: number | string;
+  width?: ViewStyle['width'];
   height?: number;
   borderRadius?: number;
   style?: ViewStyle;
@@ -537,7 +537,6 @@ const styles = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: 'top',
   },
-
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
