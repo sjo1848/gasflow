@@ -38,11 +38,28 @@ def node_label(node: ET.Element) -> str:
     ).strip()
 
 
-def find_node(target: str) -> ET.Element | None:
-    root = dump_ui()
+def bounds_tuple(bounds: str) -> tuple[int, int, int, int]:
+    match = re.fullmatch(r"\[(\d+),(\d+)]\[(\d+),(\d+)]", bounds)
+    if not match:
+        raise RuntimeError(f"Invalid Android bounds: {bounds!r}")
+    return tuple(map(int, match.groups()))
+
+
+def node_area(node: ET.Element) -> int:
+    bounds = node.attrib.get("bounds")
+    if not bounds:
+        return 0
+    try:
+        left, top, right, bottom = bounds_tuple(bounds)
+    except RuntimeError:
+        return 0
+    return max(0, right - left) * max(0, bottom - top)
+
+
+def matching_nodes(root: ET.Element, target: str) -> list[ET.Element]:
+    lowered = target.casefold()
     exact: list[ET.Element] = []
     partial: list[ET.Element] = []
-    lowered = target.casefold()
 
     for node in root.iter("node"):
         label = node_label(node)
@@ -53,7 +70,16 @@ def find_node(target: str) -> ET.Element | None:
         elif lowered in label.casefold():
             partial.append(node)
 
-    return exact[0] if exact else (partial[0] if partial else None)
+    candidates = exact if exact else partial
+    return sorted(
+        candidates,
+        key=lambda node: (
+            node.attrib.get("clickable") == "true",
+            node.attrib.get("enabled") != "false",
+            node_area(node),
+        ),
+        reverse=True,
+    )
 
 
 def wait_for_text(target: str, timeout: int = 60) -> ET.Element:
@@ -65,10 +91,9 @@ def wait_for_text(target: str, timeout: int = 60) -> ET.Element:
             root = dump_ui()
             labels = [node_label(node) for node in root.iter("node") if node_label(node)]
             last_labels = labels[-20:]
-            lowered = target.casefold()
-            for node in root.iter("node"):
-                if lowered in node_label(node).casefold():
-                    return node
+            candidates = matching_nodes(root, target)
+            if candidates:
+                return candidates[0]
         except (subprocess.CalledProcessError, ET.ParseError):
             pass
         time.sleep(2)
@@ -77,10 +102,7 @@ def wait_for_text(target: str, timeout: int = 60) -> ET.Element:
 
 
 def center_from_bounds(bounds: str) -> tuple[int, int]:
-    match = re.fullmatch(r"\[(\d+),(\d+)]\[(\d+),(\d+)]", bounds)
-    if not match:
-        raise RuntimeError(f"Invalid Android bounds: {bounds!r}")
-    left, top, right, bottom = map(int, match.groups())
+    left, top, right, bottom = bounds_tuple(bounds)
     return (left + right) // 2, (top + bottom) // 2
 
 
@@ -90,8 +112,12 @@ def tap_text(target: str, timeout: int = 60) -> None:
     if not bounds:
         raise RuntimeError(f"UI node for {target!r} has no bounds")
     x, y = center_from_bounds(bounds)
+    print(
+        f"Tapping {target!r}: label={node_label(node)!r}, "
+        f"clickable={node.attrib.get('clickable')}, bounds={bounds}"
+    )
     adb("shell", "input", "tap", str(x), str(y))
-    time.sleep(1)
+    time.sleep(2)
 
 
 def launch_app() -> None:
@@ -153,7 +179,7 @@ def main() -> None:
     tap_text("Iniciar Sesión")
     wait_for_text("Elegí modo de trabajo")
     tap_text("Panel Admin")
-    evidence.append(screenshot("02-admin-orders", "Gestion de Pedidos"))
+    evidence.append(screenshot("02-admin-orders", "Gestión de Pedidos"))
 
     tap_text("Stock")
     evidence.append(screenshot("03-admin-stock", "Stock y Balance"))
@@ -176,7 +202,7 @@ def main() -> None:
         "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "applicationId": PACKAGE,
         "apiBaseUrl": "http://10.0.2.2:8080",
-        "buildCommand": "npx expo prebuild --platform android --non-interactive --clean && ./gradlew app:assembleRelease",
+        "buildCommand": "npx expo prebuild --platform android --clean && ./gradlew app:assembleRelease",
         "device": device_metadata(),
         "seed": "development Docker Compose database and demo users declared by the repository",
         "evidence": evidence,
