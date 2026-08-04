@@ -6,12 +6,14 @@ import os
 import re
 import subprocess
 import time
+import traceback
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
 PACKAGE = "com.sjo1848.gasflow"
 ACTIVITY = f"{PACKAGE}/.MainActivity"
+SETUP_PACKAGE = "com.google.android.googlesdksetup"
 OUTPUT_DIR = Path(os.environ.get("CAPTURE_OUTPUT_DIR", "artifacts/verified-media"))
 SOURCE_COMMIT_SHA = os.environ.get("SOURCE_COMMIT_SHA", os.environ.get("GITHUB_SHA", "local"))
 TAP_Y_OFFSET = int(os.environ.get("ANDROID_TAP_Y_OFFSET", "64"))
@@ -124,6 +126,20 @@ def tap_text(target: str, timeout: int = 60) -> None:
     time.sleep(2)
 
 
+def prepare_device() -> None:
+    adb("wait-for-device")
+    adb("shell", "settings", "put", "global", "hide_error_dialogs", "1", check=False)
+    adb("shell", "settings", "put", "global", "anr_show_background", "0", check=False)
+    adb("shell", "pm", "disable-user", "--user", "0", SETUP_PACKAGE, check=False)
+    adb("shell", "am", "force-stop", SETUP_PACKAGE, check=False)
+    adb("shell", "input", "keyevent", "KEYCODE_HOME", check=False)
+    adb("shell", "cmd", "uimode", "night", "no", check=False)
+    adb("shell", "settings", "put", "global", "window_animation_scale", "0")
+    adb("shell", "settings", "put", "global", "transition_animation_scale", "0")
+    adb("shell", "settings", "put", "global", "animator_duration_scale", "0")
+    time.sleep(2)
+
+
 def launch_app() -> None:
     adb("shell", "am", "force-stop", PACKAGE)
     adb("shell", "am", "start", "-n", ACTIVITY)
@@ -153,6 +169,43 @@ def screenshot(name: str, expected_text: str) -> dict[str, Any]:
     return {"name": name, "filename": target.name, "expectedText": expected_text, **metadata}
 
 
+def capture_failure_diagnostics(error: BaseException) -> None:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    diagnostic = {
+        "repository": "sjo1848/gasflow",
+        "commitSha": SOURCE_COMMIT_SHA,
+        "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "errorType": type(error).__name__,
+        "error": str(error),
+        "traceback": traceback.format_exc(),
+    }
+    (OUTPUT_DIR / "failure.json").write_text(
+        json.dumps(diagnostic, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    screen = subprocess.run(["adb", "exec-out", "screencap", "-p"], check=False, capture_output=True)
+    if screen.returncode == 0 and screen.stdout.startswith(PNG_SIGNATURE):
+        (OUTPUT_DIR / "failure-screen.png").write_bytes(screen.stdout)
+
+    try:
+        root = dump_ui()
+        (OUTPUT_DIR / "failure-window.xml").write_text(
+            ET.tostring(root, encoding="unicode"),
+            encoding="utf-8",
+        )
+    except (subprocess.CalledProcessError, ET.ParseError):
+        pass
+
+    focus = adb("shell", "dumpsys", "window", "windows", check=False).stdout
+    focus_lines = [
+        line.strip()
+        for line in focus.splitlines()
+        if "mCurrentFocus" in line or "mFocusedApp" in line or "mTopFocusedDisplayId" in line
+    ]
+    (OUTPUT_DIR / "failure-focus.txt").write_text("\n".join(focus_lines) + "\n", encoding="utf-8")
+
+
 def device_metadata() -> dict[str, str]:
     def prop(name: str) -> str:
         return adb("shell", "getprop", name).stdout.strip()
@@ -169,11 +222,7 @@ def device_metadata() -> dict[str, str]:
 
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    adb("wait-for-device")
-    adb("shell", "cmd", "uimode", "night", "no", check=False)
-    adb("shell", "settings", "put", "global", "window_animation_scale", "0")
-    adb("shell", "settings", "put", "global", "transition_animation_scale", "0")
-    adb("shell", "settings", "put", "global", "animator_duration_scale", "0")
+    prepare_device()
 
     evidence: list[dict[str, Any]] = []
 
@@ -222,4 +271,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as error:
+        capture_failure_diagnostics(error)
+        raise
