@@ -16,7 +16,7 @@ ACTIVITY = f"{PACKAGE}/.MainActivity"
 SETUP_PACKAGE = "com.google.android.googlesdksetup"
 OUTPUT_DIR = Path(os.environ.get("CAPTURE_OUTPUT_DIR", "artifacts/verified-media"))
 SOURCE_COMMIT_SHA = os.environ.get("SOURCE_COMMIT_SHA", os.environ.get("GITHUB_SHA", "local"))
-TAP_Y_OFFSET = int(os.environ.get("ANDROID_TAP_Y_OFFSET", "64"))
+TAP_Y_OFFSET = int(os.environ.get("ANDROID_TAP_Y_OFFSET", "0"))
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 MINIMUM_BYTES = 10_000
 
@@ -104,23 +104,24 @@ def wait_for_text(target: str, timeout: int = 60) -> ET.Element:
     raise RuntimeError(f"Timed out waiting for {target!r}. Visible labels: {last_labels}")
 
 
-def center_from_bounds(bounds: str) -> tuple[int, int]:
-    left, top, right, bottom = bounds_tuple(bounds)
-    return (left + right) // 2, (top + bottom) // 2
-
-
 def tap_text(target: str, timeout: int = 60) -> None:
     node = wait_for_text(target, timeout)
     bounds = node.attrib.get("bounds")
     if not bounds:
         raise RuntimeError(f"UI node for {target!r} has no bounds")
-    x, accessibility_y = center_from_bounds(bounds)
-    physical_y = accessibility_y + TAP_Y_OFFSET
+
+    left, top, right, bottom = bounds_tuple(bounds)
+    x = (left + right) // 2
+    accessibility_y = (top + bottom) // 2
+    requested_y = accessibility_y + TAP_Y_OFFSET
+    vertical_margin = min(16, max(1, (bottom - top) // 4))
+    physical_y = min(max(requested_y, top + vertical_margin), bottom - vertical_margin)
+
     print(
         f"Tapping {target!r}: label={node_label(node)!r}, "
         f"clickable={node.attrib.get('clickable')}, bounds={bounds}, "
-        f"accessibility=({x},{accessibility_y}), physical=({x},{physical_y}), "
-        f"yOffset={TAP_Y_OFFSET}"
+        f"accessibility=({x},{accessibility_y}), requested=({x},{requested_y}), "
+        f"physical=({x},{physical_y}), yOffset={TAP_Y_OFFSET}, margin={vertical_margin}"
     )
     adb("shell", "input", "touchscreen", "tap", str(x), str(physical_y))
     time.sleep(2)
