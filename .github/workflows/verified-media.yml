@@ -65,8 +65,22 @@ jobs:
       - name: Align Kotlin and Compose compiler
         working-directory: mobile
         run: |
-          sed -i "s/kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.24'/kotlinVersion = '1.9.25'/" android/build.gradle
-          grep -F "kotlinVersion = '1.9.25'" android/build.gradle
+          mapfile -t kotlin_files < <(
+            grep -RIl --exclude='package-lock.json' '1\.9\.24' android node_modules/expo-modules-core/android
+          )
+          if [ "${#kotlin_files[@]}" -eq 0 ]; then
+            echo 'No Kotlin 1.9.24 declarations were found.'
+            grep -RIn 'kotlinVersion\|kotlin_version\|1\.9\.' android node_modules/expo-modules-core/android | head -100
+            exit 1
+          fi
+          printf 'Updating Kotlin declarations in:\n%s\n' "${kotlin_files[*]}"
+          sed -i 's/1\.9\.24/1.9.25/g' "${kotlin_files[@]}"
+          if grep -RIq --exclude='package-lock.json' '1\.9\.24' android node_modules/expo-modules-core/android; then
+            echo 'Kotlin 1.9.24 remains after alignment.'
+            grep -RIn --exclude='package-lock.json' '1\.9\.24' android node_modules/expo-modules-core/android
+            exit 1
+          fi
+          grep -RIn --exclude='package-lock.json' '1\.9\.25' android node_modules/expo-modules-core/android | head -100
 
       - name: Build release APK
         working-directory: mobile/android
