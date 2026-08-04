@@ -14,6 +14,7 @@ PACKAGE = "com.sjo1848.gasflow"
 ACTIVITY = f"{PACKAGE}/.MainActivity"
 OUTPUT_DIR = Path(os.environ.get("CAPTURE_OUTPUT_DIR", "artifacts/verified-media"))
 SOURCE_COMMIT_SHA = os.environ.get("SOURCE_COMMIT_SHA", os.environ.get("GITHUB_SHA", "local"))
+TAP_Y_OFFSET = int(os.environ.get("ANDROID_TAP_Y_OFFSET", "64"))
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 MINIMUM_BYTES = 10_000
 
@@ -111,12 +112,15 @@ def tap_text(target: str, timeout: int = 60) -> None:
     bounds = node.attrib.get("bounds")
     if not bounds:
         raise RuntimeError(f"UI node for {target!r} has no bounds")
-    x, y = center_from_bounds(bounds)
+    x, accessibility_y = center_from_bounds(bounds)
+    physical_y = accessibility_y + TAP_Y_OFFSET
     print(
         f"Tapping {target!r}: label={node_label(node)!r}, "
-        f"clickable={node.attrib.get('clickable')}, bounds={bounds}"
+        f"clickable={node.attrib.get('clickable')}, bounds={bounds}, "
+        f"accessibility=({x},{accessibility_y}), physical=({x},{physical_y}), "
+        f"yOffset={TAP_Y_OFFSET}"
     )
-    adb("shell", "input", "tap", str(x), str(y))
+    adb("shell", "input", "touchscreen", "tap", str(x), str(physical_y))
     time.sleep(2)
 
 
@@ -203,6 +207,7 @@ def main() -> None:
         "applicationId": PACKAGE,
         "apiBaseUrl": "http://10.0.2.2:8080",
         "buildCommand": "npx expo prebuild --platform android --clean && ./gradlew app:assembleRelease",
+        "tapYOffsetPx": TAP_Y_OFFSET,
         "device": device_metadata(),
         "seed": "development Docker Compose database and demo users declared by the repository",
         "evidence": evidence,
