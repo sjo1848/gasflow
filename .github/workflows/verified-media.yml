@@ -64,7 +64,9 @@ jobs:
 
       - name: Align Kotlin and Compose compiler
         working-directory: mobile
-        run: echo 'android.kotlinVersion=1.9.25' >> android/gradle.properties
+        run: |
+          sed -i "s/kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.24'/kotlinVersion = '1.9.25'/" android/build.gradle
+          grep -F "kotlinVersion = '1.9.25'" android/build.gradle
 
       - name: Build release APK
         working-directory: mobile/android
