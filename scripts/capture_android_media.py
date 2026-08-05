@@ -17,6 +17,7 @@ SETUP_PACKAGE = "com.google.android.googlesdksetup"
 OUTPUT_DIR = Path(os.environ.get("CAPTURE_OUTPUT_DIR", "artifacts/verified-media"))
 SOURCE_COMMIT_SHA = os.environ.get("SOURCE_COMMIT_SHA", os.environ.get("GITHUB_SHA", "local"))
 TAP_Y_OFFSET = int(os.environ.get("ANDROID_TAP_Y_OFFSET", "0"))
+PRESS_DURATION_MS = int(os.environ.get("ANDROID_PRESS_DURATION_MS", "180"))
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 MINIMUM_BYTES = 10_000
 
@@ -118,12 +119,23 @@ def tap_text(target: str, timeout: int = 60) -> None:
     physical_y = min(max(requested_y, top + vertical_margin), bottom - vertical_margin)
 
     print(
-        f"Tapping {target!r}: label={node_label(node)!r}, "
+        f"Pressing {target!r}: label={node_label(node)!r}, "
         f"clickable={node.attrib.get('clickable')}, bounds={bounds}, "
         f"accessibility=({x},{accessibility_y}), requested=({x},{requested_y}), "
-        f"physical=({x},{physical_y}), yOffset={TAP_Y_OFFSET}, margin={vertical_margin}"
+        f"physical=({x},{physical_y}), yOffset={TAP_Y_OFFSET}, "
+        f"margin={vertical_margin}, durationMs={PRESS_DURATION_MS}"
     )
-    adb("shell", "input", "touchscreen", "tap", str(x), str(physical_y))
+    adb(
+        "shell",
+        "input",
+        "touchscreen",
+        "swipe",
+        str(x),
+        str(physical_y),
+        str(x),
+        str(physical_y),
+        str(PRESS_DURATION_MS),
+    )
     time.sleep(2)
 
 
@@ -256,8 +268,9 @@ def main() -> None:
         "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "applicationId": PACKAGE,
         "apiBaseUrl": "http://10.0.2.2:8080",
-        "buildCommand": "npx expo prebuild --platform android --clean && ./gradlew app:assembleRelease",
+        "buildCommand": "npx expo prebuild --platform android --clean && ./gradlew app:assembleRelease -PreactNativeArchitectures=x86_64",
         "tapYOffsetPx": TAP_Y_OFFSET,
+        "pressDurationMs": PRESS_DURATION_MS,
         "device": device_metadata(),
         "seed": "development Docker Compose database and demo users declared by the repository",
         "evidence": evidence,
