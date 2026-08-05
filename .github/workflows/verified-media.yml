@@ -1,0 +1,154 @@
+name: Verified Android media
+
+on:
+  push:
+    branches:
+      - verified-media
+    paths:
+      - '.github/workflows/verified-media.yml'
+      - 'scripts/capture_android_media.py'
+      - 'mobile/**'
+      - 'backend/**'
+      - 'docker-compose.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/verified-media.yml'
+      - 'scripts/capture_android_media.py'
+      - 'mobile/**'
+      - 'backend/**'
+      - 'docker-compose.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gasflow-verified-media-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Build app and capture Android evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CI: '1'
+      NODE_ENV: production
+      EXPO_PUBLIC_API_BASE_URL: http://10.0.2.2:8080
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install locked mobile dependencies
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Android project
+        working-directory: mobile
+        run: npx expo prebuild --platform android --clean
+
+      - name: Align Compose compiler with Kotlin
+        working-directory: mobile
+        run: |
+          if grep -q '^android.kotlinVersion=' android/gradle.properties; then
+            sed -i 's/^android\.kotlinVersion=.*/android.kotlinVersion=1.9.24/' android/gradle.properties
+          else
+            echo 'android.kotlinVersion=1.9.24' >> android/gradle.properties
+          fi
+          grep -F 'android.kotlinVersion=1.9.24' android/gradle.properties
+          grep -F '"1.9.24": "1.5.14"' node_modules/expo-modules-core/android/build.gradle
+          if grep -RIl --exclude='package-lock.json' '1\.9\.24' node_modules/expo-modules-core/android | xargs -r grep -l '1\.9\.25'; then
+            echo 'Expo keeps separate mappings for Kotlin 1.9.24 and 1.9.25 as expected.'
+          fi
+
+      - name: Build x86_64 release APK
+        working-directory: mobile/android
+        run: ./gradlew app:assembleRelease -PreactNativeArchitectures=x86_64 --no-daemon
+
+      - name: Start seeded backend
+        run: docker compose up -d --build
+
+      - name: Validate backend and demo users
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8080/health > /dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              docker compose logs
+              exit 1
+            fi
+            sleep 2
+          done
+          curl --fail --silent \
+            -H 'content-type: application/json' \
+            -d '{"username":"admin","password":"admin123"}' \
+            http://127.0.0.1:8080/auth/login > /tmp/admin-login.json
+          curl --fail --silent \
+            -H 'content-type: application/json' \
+            -d '{"username":"repartidor","password":"repartidor123"}' \
+            http://127.0.0.1:8080/auth/login > /tmp/driver-login.json
+
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -c /dev/kvm
+          ls -l /dev/kvm
+
+      - name: Prepare evidence directory
+        run: mkdir -p artifacts/verified-media
+
+      - name: Run emulator and capture evidence
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 4096M
+          heap-size: 1024M
+          disable-animations: true
+          script: |
+            adb shell settings put global hide_error_dialogs 1 || true
+            adb shell settings put global anr_show_background 0 || true
+            adb shell pm disable-user --user 0 com.google.android.googlesdksetup || true
+            adb shell am force-stop com.google.android.googlesdksetup || true
+            adb shell input keyevent KEYCODE_HOME || true
+            sleep 2
+            adb install -r mobile/android/app/build/outputs/apk/release/app-release.apk
+            SOURCE_COMMIT_SHA="${{ github.event.pull_request.head.sha || github.sha }}" python3 scripts/capture_android_media.py
+
+      - name: Upload verified media
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gasflow-verified-media-${{ github.sha }}
+          path: artifacts/verified-media/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Backend logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop backend
+        if: always()
+        run: docker compose down -v
