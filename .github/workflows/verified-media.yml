@@ -76,9 +76,9 @@ jobs:
             echo 'Expo keeps separate mappings for Kotlin 1.9.24 and 1.9.25 as expected.'
           fi
 
-      - name: Build release APK
+      - name: Build x86_64 release APK
         working-directory: mobile/android
-        run: ./gradlew app:assembleRelease --no-daemon
+        run: ./gradlew app:assembleRelease -PreactNativeArchitectures=x86_64 --no-daemon
 
       - name: Start seeded backend
         run: docker compose up -d --build
